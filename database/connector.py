@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import os
 import re
 from datetime import date, datetime
@@ -6,6 +8,8 @@ from typing import Optional
 import pandas as pd
 from dotenv import load_dotenv
 from supabase import Client, create_client
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -89,7 +93,9 @@ def _get_or_create_account(
         )
 
     if res.data:
-        return res.data[0]["bank_acc_id"]
+        acc_id = res.data[0]["bank_acc_id"]
+        logger.info("Account exists: %s (%s)", account_name, acc_id)
+        return acc_id
 
     res = client.table("accounts").insert({
         "user_id": user_id,
@@ -97,7 +103,9 @@ def _get_or_create_account(
         "account_type": account_type,
         "last_four": last_four,
     }).execute()
-    return res.data[0]["bank_acc_id"]
+    acc_id = res.data[0]["bank_acc_id"]
+    logger.info("Created account: %s (%s)", account_name, acc_id)
+    return acc_id
 
 
 def _create_statement(
@@ -168,58 +176,59 @@ def cache_categories_bulk(items: dict[str, str]) -> None:
 # ---------------------------------------------------------------------------
 
 def upload_transactions(
-    df: pd.DataFrame,
+    pdf_path: str,
     user_id: str,
-    account_name: str,
-    account_type: str,
-    pdf_filename: str,
-    pdf_hash: str,
-    last_four: Optional[str] = None,
-    storage_path: str = "",
-    period_start: Optional[str | date] = None,
-    period_end: Optional[str | date] = None,
+    df: Optional[pd.DataFrame] = None,
     skip_if_exists: bool = True,
+    storage_path: str = "",
 ) -> dict:
     """
-    Transform a parser DataFrame and upload it to Supabase.
+    Parse, categorize, and upload a bank PDF statement to Supabase.
 
     Parameters
     ----------
-    df              : DataFrame from extract_transactions()
+    pdf_path        : Path to the PDF file
     user_id         : Supabase auth UUID of the owning user
-    account_name    : Human label, e.g. "Capital One Venture"
-    account_type    : One of 'checking', 'savings', 'credit', 'investment'
-    pdf_filename    : Original PDF filename (stored for display)
-    pdf_hash        : SHA-256 hex digest of the file content (used for dedup)
+    df              : Optional pre-categorized transactions DataFrame; if omitted,
+                      the PDF is parsed and transactions are auto-categorized
+    skip_if_exists  : Skip upload if this file hash was already processed
     storage_path    : Optional Supabase Storage path if you uploaded the PDF
-    period_start/end: Statement period — ISO string from parse_pdf() or date object
-    skip_if_exists  : If True and this file hash was already uploaded, return
-                    early without re-inserting.
 
     Returns
     -------
     dict with keys: statement_id, account_id, inserted, skipped
     """
+    # Lazy imports to avoid circular dependency (categorizer imports connector)
+    from pipeline.pdf_parser import parse_pdf
+    from pipeline.categorizer import categorize_dataframe
+
+    parsed = parse_pdf(pdf_path)
+
+    if df is None:
+        df = categorize_dataframe(parsed["transactions"])
+
+    pdf_hash     = hashlib.sha256(open(pdf_path, "rb").read()).hexdigest()
+    pdf_filename = os.path.basename(pdf_path)
+    account_name = f"{parsed['card_name']} ****{parsed['last_four']}"
+    account_type = parsed["account_type"] or "credit"
+    last_four    = parsed["last_four"]
+    period_start = date.fromisoformat(parsed["period_start"]) if parsed["period_start"] else None
+    period_end   = date.fromisoformat(parsed["period_end"])   if parsed["period_end"]   else None
+    year         = (period_end or period_start or date.today()).year
+
+    # logger.info("PDF hash: %s", pdf_hash)
+    logger.info("Account: %s | Period: %s → %s", account_name, period_start, period_end)
+
     client = _get_client()
 
-    def _to_date(d):
-        if isinstance(d, str):
-            return date.fromisoformat(d)
-        return d
-
-    period_start = _to_date(period_start)
-    period_end   = _to_date(period_end)
-    year = (period_end or period_start or date.today()).year
-
-    # Account
     account_id = _get_or_create_account(
         client, user_id, account_name, account_type, last_four
     )
 
-    # Dedup check
     if skip_if_exists:
         existing_id = _statement_exists(client, pdf_hash)
         if existing_id:
+            logger.info("Already uploaded (statement %s), skipping.", existing_id)
             return {
                 "statement_id": existing_id,
                 "account_id": account_id,
@@ -227,17 +236,15 @@ def upload_transactions(
                 "skipped": True,
             }
 
-    # Statement
     statement_id = _create_statement(
         client, user_id, account_id, pdf_filename, pdf_hash, storage_path, period_start, period_end
     )
 
-    # Build transaction rows
     rows = []
     for row in df.to_dict("records"):
         trans_date = _parse_date(row.get("trans_date"), year)
         if trans_date is None:
-            continue  # skip rows with unparseable dates
+            continue
 
         amount_raw = float(row["amount1"])
         category = row.get("category")
@@ -255,6 +262,7 @@ def upload_transactions(
     if rows:
         client.table("transactions").insert(rows).execute()
 
+    logger.info("Inserted %d transactions into statement %s", len(rows), statement_id)
     return {
         "statement_id": statement_id,
         "account_id": account_id,

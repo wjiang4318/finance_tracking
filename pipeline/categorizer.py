@@ -191,7 +191,7 @@ def categorize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             new_mappings = dict(zip(chunk, batch))
             cache_results.update(new_mappings)
             cache_categories_bulk(new_mappings)
-            logger.info("  Cached batch %d/%d", i, len(chunks))
+            logger.info("Cached batch %d/%d", i, len(chunks))
         logger.info("Added %d new descriptions to cache", len(new_categories))
 
     # --- Step 3: assemble final categories in original order ---

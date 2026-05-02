@@ -1,10 +1,47 @@
 # Project
-Project: finance-tracker— a personal finance app that ingests bank/credit card PDF statements, categorizes transactions with an LLM, and stores everything in Supabase. Want to create a visually engaging UI
+finance-tracker — a personal finance app that ingests bank/credit card PDF statements, categorizes transactions with an LLM, and stores everything in Supabase. Goal: a visually engaging UI.
 
-Architecture:
+## Architecture
 
-- pipeline/pdf_parser.py — parses PDFs into a DataFrame, auto-detects account type and last-four digits
-- pipeline/categorizer.py — LLM-based transaction categorizer with a merchant cache in Supabase
-database/connector.py — uploads parsed/categorized data to Supabase (accounts, statements, transactions tables)
-- main.py — orchestrates the 3-step pipeline (parse → categorize → upload); auto-builds account_name as "Chase Sapphire ****1333" from parsed card name + last four
-- api.py — FastAPI wrapper so the frontend can POST a PDF and trigger the pipeline
+```
+pipeline/pdf_parser.py      — parses PDFs into a DataFrame + metadata dict
+pipeline/categorizer.py     — Groq-based categorizer with a Supabase merchant cache
+database/connector.py       — uploads parsed/categorized data to Supabase
+tests/main.py               — manual end-to-end runner (parse → categorize → upload)
+tests/test_parsers.py       — parser unit tests
+api.py                      — (planned) FastAPI wrapper: POST a PDF, trigger pipeline
+```
+
+## Pipeline flow
+
+1. `parse_pdf(path)` → extracts text with pdfplumber, returns:
+   - `transactions` DataFrame (trans_date, description, amount1, amount2)
+   - `period_start` / `period_end` (ISO dates)
+   - `account_type`: `"credit"` | `"checking"` | `"savings"` (weighted regex scoring)
+   - `last_four`: last 4 digits of account number
+   - `card_name`: e.g. `"Chase Sapphire Preferred"`, `"Capital One Venture"`
+
+2. `categorize_dataframe(df)` → adds `category` and `cleaned_description` columns
+   - Cleans descriptions (strips phone numbers, order codes, domain suffixes)
+   - Bulk cache lookup against `merchant_categories` table (1 Supabase query)
+   - Uncached descriptions batched to Groq `llama-3.3-70b-versatile` in chunks of 20
+   - New results written back to cache
+   - 8 categories: Food & Drink, Bills & Utilities, Travel, Groceries, Health and Wellness, Entertainment, Shopping, Personal
+
+3. `upload_transactions(pdf_path, user_id)` → single public entrypoint in connector
+   - Builds `account_name` as `"Chase Sapphire ****1333"` from `card_name` + `last_four`
+   - Upserts account in `accounts` table (keyed on `last_four`)
+   - Deduplicates statements via SHA-256 file hash (`skip_if_exists=True` by default)
+   - Inserts rows into `transactions` table; negative amounts = credits
+
+## Supabase tables
+- `accounts` — bank_acc_id, user_id, account_name, account_type, last_four
+- `statements` — statements_id, account_id, user_id, filename, file_hash, period_start, period_end, storage_path
+- `transactions` — date, description, amount, type (debit/credit), category, statement_id, user_id
+- `merchant_categories` — description (cleaned), category (LLM cache)
+
+## Supported card brands
+Chase (Sapphire, Freedom, College Checking), Capital One, Bank of America,  Marcus (Goldman Sachs)
+
+## Env vars required
+`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GROQ_API_KEY`
