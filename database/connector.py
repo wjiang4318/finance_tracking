@@ -232,6 +232,7 @@ def upload_transactions(
             return {
                 "statement_id": existing_id,
                 "account_id": account_id,
+                "account_name": account_name,
                 "inserted": 0,
                 "skipped": True,
             }
@@ -266,6 +267,7 @@ def upload_transactions(
     return {
         "statement_id": statement_id,
         "account_id": account_id,
+        "account_name": account_name,
         "inserted": len(rows),
         "skipped": False,
     }

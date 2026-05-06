@@ -32,12 +32,17 @@ CATEGORIES = [
     "Entertainment",
     "Shopping",
     "Personal",
+    "Income",
 ]
 
 _SYSTEM_PROMPT = f"""You are a transaction categorizer. Given a numbered list of transaction descriptions, respond with the number and category for each, one per line, in the format "N. Category". Use only categories from this list:
 {chr(10).join(f"- {c}" for c in CATEGORIES)}
 
 Rules (apply in priority order — first matching rule wins):
+
+INCOME — money deposited from an employer, institution, or government only. Payroll direct deposits, ACH credits from a named employer, tax refunds, bank interest, cashback/rewards credits issued by the bank.
+Examples: "Direct Deposit", "Payroll", "ADP", "Gusto", "Paychex", "ACH Credit [Company]", "Tax Refund IRS", "Interest Earned", "Rewards Credit".
+NOT income: Zelle, Venmo, Cash App, PayPal transfers — always treat those as Personal since the description alone cannot determine if the sender is an employer or a friend.
 
 FOOD & DRINK — restaurants, cafes, bars, fast food chains, takeout, food courts, canteens, bubble tea shops, coffee shops. The merchant must be a place where you consume food/drink on-site or get it delivered/takeaway. This includes non-English restaurant words: "Restauracja" (Polish), "Ristorante" (Italian), "Restaurante" (Spanish/Portuguese), "Restoran", etc.
 Examples: McDonald's, Starbucks, Pret A Manger, Wendy's, Chick-fil-A, Chiptole, Nando's, Wagamama, Itsu, Shake Shack, Deliveroo, Uber Eats, Just Eat, any restaurant or café name.
