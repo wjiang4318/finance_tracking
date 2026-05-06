@@ -43,8 +43,8 @@ _SYSTEM_PROMPT = f"""You are a transaction categorizer. Given a numbered list of
 
 Rules (apply in priority order — first matching rule wins):
 
-CREDIT CARD PAYMENT — payments made to pay off a credit card balance. Look for card issuer names combined with payment-related keywords.
-Examples: "CHASE CREDIT CRD AUTOPAY", "CAPITAL ONE ONLINE PAYMENT", "AMEX AUTOPAY", "CITI AUTOPAY", "DISCOVER PAYMENT", any description containing a card issuer name + PAYMENT/AUTOPAY/PMT.
+CREDIT CARD PAYMENT — payments made to pay off a credit card balance. Includes bank-issued payment confirmations with no merchant name.
+Examples: "CHASE CREDIT CRD AUTOPAY", "Payment Thank You-Mobile" (Chase), "BA ELECTRONIC PAYMENT" (Bank of America), "CAPITAL ONE ONLINE PAYMENT", "AMEX AUTOPAY", "CITI AUTOPAY", "DISCOVER PAYMENT", any description with a card issuer name + PAYMENT/AUTOPAY/PYMT, or any generic bank electronic payment with no merchant context.
 
 INVESTMENT — transactions to/from investment platforms, brokerages, or cryptocurrency exchanges.
 Examples: Robinhood, Fidelity, Vanguard, Charles Schwab, E*Trade, TD Ameritrade, Betterment, Wealthfront, Acorns, Coinbase, Binance, Webull, any named brokerage or crypto exchange.
@@ -109,6 +109,29 @@ def _clean_description(desc: str) -> str:
     desc = _ORDER_CODE_RE.sub('', desc)
     desc = _TRAILING_NUM_RE.sub('', desc)
     return ' '.join(desc.split())
+
+
+# Deterministic rules applied before cache/LLM — covers payment descriptions that
+# don't carry a card-issuer name (Chase "Payment Thank You", BofA "BA ELECTRONIC PAYMENT")
+# and shorthands that are unambiguous (AUTOPAY, PYMT).
+_LOCAL_RULES: list[tuple[re.Pattern, str]] = [
+    (
+        re.compile(
+            r'\b(autopay|pymt)\b'       # Capital One: "CAPITAL ONE AUTOPAY PYMT"
+            r'|electronic\s+payment'    # BofA:  "BA ELECTRONIC PAYMENT"
+            r'|payment\s+thank\s+you',  # Chase: "Payment Thank You-Mobile"
+            re.I,
+        ),
+        "Credit Card Payment",
+    ),
+]
+
+
+def _apply_local_rules(desc: str) -> str | None:
+    for pattern, category in _LOCAL_RULES:
+        if pattern.search(desc):
+            return category
+    return None
 
 
 _groq_client: Groq | None = None
@@ -176,45 +199,64 @@ def categorize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add a 'category' column to a transactions DataFrame.
 
-    1. Check each description against the cache.
-    2. Send all uncached descriptions in a single batched API call.
-    3. Cache the new results and merge everything back in order.
+    1. Apply deterministic local rules (CC payments, etc.) — no API needed.
+    2. Bulk cache lookup for remaining descriptions (1 Supabase query).
+    3. Batch API call for anything still uncached.
+    4. Merge all results back in original order.
     """
     start_time = time.time()
 
     descriptions = df["description"].tolist()
     cleaned = [_clean_description(d) for d in descriptions]
 
-    # --- Step 1: bulk cache lookup (1 Supabase query) ---
-    unique_cleaned = list(dict.fromkeys(cleaned))
-    cache_results = get_cached_categories_bulk(unique_cleaned)
-    uncached_descs = [d for d in unique_cleaned if d not in cache_results]
+    # --- Step 1: deterministic local rules (no cache/API needed) ---
+    pre_assigned: dict[int, str] = {}
+    for i, c in enumerate(cleaned):
+        cat = _apply_local_rules(c)
+        if cat is not None:
+            pre_assigned[i] = cat
 
-    cache_hits = sum(1 for d in cleaned if d in cache_results)
-    logger.info(
-        "%d transactions → %d unique | %d cached, %d need API",
-        len(descriptions), len(unique_cleaned), cache_hits, len(uncached_descs),
-    )
+    needs_lookup_indices = [i for i in range(len(cleaned)) if i not in pre_assigned]
+    unique_for_lookup = list(dict.fromkeys(cleaned[i] for i in needs_lookup_indices))
 
-    # --- Step 2: batch API call for uncached descriptions (chunks of 20) ---
-    if uncached_descs:
-        client = _get_client()
-        chunk_size = 20
-        chunks = [uncached_descs[i:i+chunk_size] for i in range(0, len(uncached_descs), chunk_size)]
-        logger.info("%d descriptions → %d API call(s)", len(uncached_descs), len(chunks))
+    cache_results: dict[str, str] = {}
 
-        new_categories = []
-        for i, chunk in enumerate(chunks, 1):
-            batch = _batch_categorize(chunk, client)
-            new_categories.extend(batch)
-            new_mappings = dict(zip(chunk, batch))
-            cache_results.update(new_mappings)
-            cache_categories_bulk(new_mappings)
-            logger.info("Cached batch %d/%d", i, len(chunks))
-        logger.info("Added %d new descriptions to cache", len(new_categories))
+    if unique_for_lookup:
+        # --- Step 2: bulk cache lookup (1 Supabase query) ---
+        cache_results = get_cached_categories_bulk(unique_for_lookup)
+        uncached_descs = [d for d in unique_for_lookup if d not in cache_results]
 
-    # --- Step 3: assemble final categories in original order ---
-    categories = [cache_results[c] for c in cleaned]
+        cache_hits = sum(1 for i in needs_lookup_indices if cleaned[i] in cache_results)
+        logger.info(
+            "%d transactions → %d unique | %d local rules, %d cached, %d need API",
+            len(descriptions), len(dict.fromkeys(cleaned)),
+            len(pre_assigned), cache_hits, len(uncached_descs),
+        )
+
+        # --- Step 3: batch API call for uncached descriptions (chunks of 20) ---
+        if uncached_descs:
+            client = _get_client()
+            chunk_size = 20
+            chunks = [uncached_descs[i:i+chunk_size] for i in range(0, len(uncached_descs), chunk_size)]
+            logger.info("%d descriptions → %d API call(s)", len(uncached_descs), len(chunks))
+
+            new_categories = []
+            for i, chunk in enumerate(chunks, 1):
+                batch = _batch_categorize(chunk, client)
+                new_categories.extend(batch)
+                new_mappings = dict(zip(chunk, batch))
+                cache_results.update(new_mappings)
+                cache_categories_bulk(new_mappings)
+                logger.info("Cached batch %d/%d", i, len(chunks))
+            logger.info("Added %d new descriptions to cache", len(new_categories))
+    else:
+        logger.info("%d transactions → all %d matched local rules", len(descriptions), len(pre_assigned))
+
+    # --- Step 4: assemble final categories in original order ---
+    categories = [
+        pre_assigned[i] if i in pre_assigned else cache_results.get(cleaned[i], "Uncategorized")
+        for i in range(len(cleaned))
+    ]
 
     elapsed = time.time() - start_time
     logger.info("Categorization finished in %.1fs", elapsed)

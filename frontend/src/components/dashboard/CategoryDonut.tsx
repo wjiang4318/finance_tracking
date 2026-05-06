@@ -15,7 +15,6 @@ export const CATEGORY_COLORS: Record<string, string> = {
   'Credit Card Payment': '#94a3b8',
   'Income':              '#22c55e',
   'Uncategorized':       '#d1d5db',
-  'Personal':            '#6b7280',
 }
 
 interface CategoryDonutProps {

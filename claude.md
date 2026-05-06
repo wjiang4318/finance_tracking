@@ -55,11 +55,11 @@ api.py                      — FastAPI wrapper: POST /upload accepts PDF + user
 
 2. `categorize_dataframe(df)` → adds `category` and `cleaned_description` columns
    - Cleans descriptions (strips phone numbers, order codes, domain suffixes)
-   - Bulk cache lookup against `merchant_categories` table (1 Supabase query)
-   - Uncached descriptions batched to Groq `llama-3.3-70b-versatile` in chunks of 20
-   - New results written back to cache
+   - **Step 1 — local rules** (`_LOCAL_RULES`): deterministic pre-LLM pass; CC payment descriptions (`autopay`, `pymt`, `payment thank you`, `electronic payment`) are assigned "Credit Card Payment" instantly, no API call
+   - **Step 2 — bulk cache lookup** against `merchant_categories` table (1 Supabase query) for remaining descriptions
+   - **Step 3 — Groq batch** (`llama-3.3-70b-versatile`, chunks of 20) for anything still uncached; results written back to cache
    - **12 categories:** Food & Drink, Bills & Utilities, Travel, Groceries, Health and Wellness, Entertainment, Shopping, Investment, Internal Transfers, Credit Card Payment, Income, Uncategorized
-   - Default fallback is `Uncategorized` (previously `Personal`)
+   - Default fallback is `Uncategorized` (previously `Personal` — legacy rows in Supabase renamed via SQL migration)
 
 3. `upload_transactions(pdf_path, user_id)` → single public entrypoint in connector
    - Builds `account_name` as `"Chase Sapphire ****1333"` from `card_name` + `last_four`
@@ -67,8 +67,16 @@ api.py                      — FastAPI wrapper: POST /upload accepts PDF + user
    - Deduplicates statements via SHA-256 file hash (`skip_if_exists=True` by default)
    - Inserts rows into `transactions` table; negative amounts = credits
 
+## Parser CC payment filtering (`_CC_PAYMENT_FILTER` in `pdf_parser.py`)
+Credit card payment rows are **dropped at parse time** — they are not real spending transactions and should never reach Supabase. Filter is applied globally to every matched row (not section-dependent, which was unreliable across PDF layouts):
+- `payment thank you` — Chase: "Payment Thank You-Mobile"
+- `electronic payment` — BofA: "BA ELECTRONIC PAYMENT"
+- `\bpymt\b` — Capital One: "CAPITAL ONE AUTOPAY PYMT"
+- `\bautopay\b` — Capital One and others
+`_NEGATIVE_SECTION_RE` is still present but only used to force amounts negative for banks that list payment-section amounts as positive in the PDF.
+
 ## Categorizer rules (priority order)
-1. **Credit Card Payment** — card issuer name + PAYMENT/AUTOPAY/PMT keyword
+1. **Credit Card Payment** — card issuer name + PAYMENT/AUTOPAY/PMT keyword (also caught by local rule before LLM)
 2. **Investment** — Robinhood, Fidelity, Vanguard, Schwab, Coinbase, Webull, etc.
 3. **Income** — payroll, direct deposit, ADP, Gusto, tax refund, bank interest
 4. **Internal Transfers** — Zelle to/from individuals, Venmo, Cash App personal, bank-to-bank ACH
@@ -214,7 +222,6 @@ Internal Transfers  #64748b  slate
 Credit Card Payment #94a3b8  light slate
 Income              #22c55e  green
 Uncategorized       #d1d5db  gray
-Personal (legacy)   #6b7280  gray (kept for existing data)
 ```
 
 ### Out of scope (no data source)

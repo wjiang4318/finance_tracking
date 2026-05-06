@@ -14,7 +14,7 @@ const CATEGORIES = [
   'Food & Drink', 'Groceries', 'Shopping', 'Travel',
   'Bills & Utilities', 'Entertainment', 'Health and Wellness',
   'Investment', 'Internal Transfers', 'Credit Card Payment',
-  'Income', 'Uncategorized', 'Personal',
+  'Income', 'Uncategorized',
 ]
 
 type TxRow = {

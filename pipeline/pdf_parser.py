@@ -259,10 +259,19 @@ _TRANSACTION_ROW = re.compile(
     re.I,
 )
 
-_NEGATIVE_SECTION_KEYWORDS = ["PAYMENTS, CREDITS AND ADJUSTMENTS"]
+# Detects "payments … credits" section headers for amount-negation only (not for filtering).
+_NEGATIVE_SECTION_RE = re.compile(
+    r'\bpayments?\b.*\bcredits?\b|\bcredits?\b.*\bpayments?\b',
+    re.I,
+)
 
-_CC_PAYMENT_PATTERN = re.compile(
-    r'\b(autopay|pymt|payment|ach\s+transfer)\b',
+# Applied globally to every parsed row — these phrases never appear in real merchant names.
+# Filters CC payment confirmations regardless of which PDF section they came from.
+_CC_PAYMENT_FILTER = re.compile(
+    r'payment\s+thank\s+you'    # Chase:        "Payment Thank You-Mobile"
+    r'|electronic\s+payment'    # BofA:         "BA ELECTRONIC PAYMENT"
+    r'|\bpymt\b'                # Capital One:  "CAPITAL ONE AUTOPAY PYMT"
+    r'|\bautopay\b',            # Capital One / others: "AUTOPAY"
     re.I,
 )
 
@@ -277,10 +286,10 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
         if not line:
             continue
 
-        if any(keyword in line.upper() for keyword in _NEGATIVE_SECTION_KEYWORDS):
+        if _NEGATIVE_SECTION_RE.search(line) and not _TRANSACTION_ROW.match(line):
             is_negative_section = True
             continue
-        elif "TRANSACTIONS" in line.upper():
+        elif "TRANSACTIONS" in line.upper() and not _TRANSACTION_ROW.match(line):
             is_negative_section = False
             continue
 
@@ -289,8 +298,7 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
             trans_date, post_date, description, amount1, amount2 = match.groups()
             description = description.strip()
 
-            # Skip CC payment rows - these are transfers, not expenses
-            if is_negative_section and _CC_PAYMENT_PATTERN.search(description):
+            if _CC_PAYMENT_FILTER.search(description):
                 continue
 
             amount1_num = float(amount1.replace("$", "").replace(",", ""))
