@@ -49,7 +49,7 @@ export default function LoginPage() {
     // min-h-screen → takes full viewport height
     // flex items-center justify-center → centres the card both vertically and horizontally
     // bg-gray-50 → light gray page background
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-[#f4f4fb]">
 
       {/* The white card */}
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8">

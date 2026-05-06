@@ -35,7 +35,7 @@ create table public.statements (
 
 -- Transactions
 create table public.transactions (
-  transactions_id uuid default gen_random_uuid() primary key,
+  id uuid default gen_random_uuid() primary key,
   statement_id uuid references public.statements(statements_id) on delete cascade not null,
   user_id uuid references public.profiles(profile_id) on delete cascade not null,
   date date not null,

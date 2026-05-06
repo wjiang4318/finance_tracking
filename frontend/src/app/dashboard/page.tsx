@@ -7,6 +7,8 @@ import StatCards from '@/components/dashboard/StatCards'
 import SpendingChart from '@/components/dashboard/SpendingChart'
 import CategoryDonut from '@/components/dashboard/CategoryDonut'
 import RecentTransactions from '@/components/dashboard/RecentTransactions'
+import NetAccumulatedChart from '@/components/dashboard/NetAccumulatedChart'
+import PageBanner from '@/components/PageBanner'
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'duplicate' | 'error'
 
@@ -26,18 +28,39 @@ function buildMonthlySpend(rows: TxRow[]): { month: string; spend: number }[] {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
     const spend = rows
-      .filter(tx => tx.date.startsWith(key) && tx.category !== 'Income' && tx.amount > 0)
+      .filter(tx => tx.date.startsWith(key) && !TRANSFERS.includes(tx.category) && tx.amount > 0)
       .reduce((sum, tx) => sum + tx.amount, 0)
     result.push({ month: MONTH_LABELS[d.getMonth()], spend: Math.round(spend * 100) / 100 })
   }
   return result
 }
 
+function buildNetAccumulated(rows: TxRow[]): { month: string; cumulative: number }[] {
+  const now = new Date()
+  const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
+  let running = 0
+  const result = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const monthRows = rows.filter(tx => tx.date.startsWith(key))
+    const income   = monthRows.filter(tx => tx.category === 'Income' || tx.amount < 0)
+                              .reduce((s, tx) => s + Math.abs(tx.amount), 0)
+    const spending = monthRows.filter(tx => !TRANSFERS.includes(tx.category) && tx.amount > 0)
+                              .reduce((s, tx) => s + tx.amount, 0)
+    running += income - spending
+    result.push({ month: MONTH_LABELS[d.getMonth()], cumulative: Math.round(running * 100) / 100 })
+  }
+  return result
+}
+
 function buildCategoryData(rows: TxRow[]): { name: string; value: number }[] {
   const map: Record<string, number> = {}
+  const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
   for (const tx of rows) {
-    if (tx.category === 'Income' || tx.amount <= 0) continue
+    if (TRANSFERS.includes(tx.category) || tx.amount <= 0) continue
     map[tx.category] = (map[tx.category] ?? 0) + tx.amount
   }
   return Object.entries(map)
@@ -60,6 +83,7 @@ export default function DashboardPage() {
   const [transactionCount, setTransactionCount]     = useState(0)
   const [monthlyData, setMonthlyData]               = useState<{ month: string; spend: number }[]>([])
   const [categoryData, setCategoryData]             = useState<{ name: string; value: number }[]>([])
+  const [netAccumulatedData, setNetAccumulatedData] = useState<{ month: string; cumulative: number }[]>([])
   const [recentTx, setRecentTx]                     = useState<TxRow[]>([])
 
   useEffect(() => {
@@ -86,16 +110,19 @@ export default function DashboardPage() {
       const currentRows = rows.filter(tx => tx.date >= currentMonthStart)
       const lastRows    = rows.filter(tx => tx.date >= lastMonthStart && tx.date <= lastMonthEnd)
 
+      const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
+      const isSpend = (tx: TxRow) => !TRANSFERS.includes(tx.category) && tx.amount > 0
+
       const expenseSum = (txs: TxRow[]) =>
-        txs.filter(tx => tx.category !== 'Income' && tx.amount > 0).reduce((s, tx) => s + tx.amount, 0)
+        txs.filter(isSpend).reduce((s, tx) => s + tx.amount, 0)
 
       const curSpend  = expenseSum(currentRows)
       const lastSpend = expenseSum(lastRows)
-      const expCount  = currentRows.filter(tx => tx.category !== 'Income' && tx.amount > 0).length
+      const expCount  = currentRows.filter(isSpend).length
 
       const catMap: Record<string, number> = {}
       for (const tx of currentRows) {
-        if (tx.category !== 'Income' && tx.amount > 0)
+        if (isSpend(tx))
           catMap[tx.category] = (catMap[tx.category] ?? 0) + tx.amount
       }
       const topCat = Object.entries(catMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
@@ -106,7 +133,8 @@ export default function DashboardPage() {
       setTransactionCount(expCount)
       setMonthlyData(buildMonthlySpend(rows))
       setCategoryData(buildCategoryData(currentRows))
-      setRecentTx(rows.slice(0, 8))
+      setNetAccumulatedData(buildNetAccumulated(rows))
+      setRecentTx(rows.slice(0, 5))
       setLoading(false)
     }
     fetchData()
@@ -151,36 +179,25 @@ export default function DashboardPage() {
   const totalCategorySpend = categoryData.reduce((s, d) => s + d.value, 0)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f4f4fb]">
 
-      {/* ── Full-width banner — scrolls with the page ── */}
-      <div className="relative h-52 w-full overflow-hidden bg-indigo-950">
-        <img
-          src="/banner.gif"
-          alt=""
-          className="w-full h-full object-cover object-[center_80%]"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-gray-50/60 via-transparent to-transparent" />
-
-        {/* Title */}
-        <div className="absolute bottom-5 left-6">
-          <p className="text-[10px] font-semibold text-indigo-200 uppercase tracking-widest mb-0.5">Personal</p>
-          <h1 className="text-2xl font-bold text-white drop-shadow-md">Finance Tracker</h1>
-        </div>
-
-        {/* Upload status */}
-        <div className="absolute top-3 right-5 flex items-center gap-2">
-          {uploadStatus === 'success' && (
-            <span className="text-xs text-emerald-300 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">✓ {uploadMsg}</span>
-          )}
-          {uploadStatus === 'duplicate' && (
-            <span className="text-xs text-yellow-300 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">⚠ {uploadMsg}</span>
-          )}
-          {uploadStatus === 'error' && (
-            <span className="text-xs text-red-300 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">✗ {uploadMsg}</span>
-          )}
-        </div>
-      </div>
+      <PageBanner
+        eyebrow="Personal"
+        title="Finance Tracker"
+        right={
+          <>
+            {uploadStatus === 'success' && (
+              <span className="text-xs text-emerald-300 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">✓ {uploadMsg}</span>
+            )}
+            {uploadStatus === 'duplicate' && (
+              <span className="text-xs text-yellow-300 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">⚠ {uploadMsg}</span>
+            )}
+            {uploadStatus === 'error' && (
+              <span className="text-xs text-red-300 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full">✗ {uploadMsg}</span>
+            )}
+          </>
+        }
+      />
 
       {/* ── Sidebar + Content (sidebar sticks once banner scrolls away) ── */}
       <div className="flex">
@@ -196,15 +213,17 @@ export default function DashboardPage() {
           />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-            <div className="lg:col-span-3">
+            {/* Left column: spending chart + net accumulated */}
+            <div className="lg:col-span-3 flex flex-col gap-4">
               <SpendingChart data={monthlyData} loading={loading} />
+              <NetAccumulatedChart data={netAccumulatedData} loading={loading} />
             </div>
-            <div className="lg:col-span-2">
+            {/* Right column: category donut + compact transactions */}
+            <div className="lg:col-span-2 flex flex-col gap-4">
               <CategoryDonut data={categoryData} total={totalCategorySpend} loading={loading} />
+              <RecentTransactions transactions={recentTx} loading={loading} />
             </div>
           </div>
-
-          <RecentTransactions transactions={recentTx} loading={loading} />
         </main>
       </div>
 

@@ -1,17 +1,20 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
 import { Plus, Search, X } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
+import PageBanner from '@/components/PageBanner'
 import { motion } from 'framer-motion'
 import DateRangePicker, { type DateRangeValue } from '@/components/DateRangePicker'
 import SingleDatePicker from '@/components/SingleDatePicker'
 
 const CATEGORIES = [
   'Food & Drink', 'Groceries', 'Shopping', 'Travel',
-  'Bills & Utilities', 'Entertainment', 'Health and Wellness', 'Personal', 'Income',
+  'Bills & Utilities', 'Entertainment', 'Health and Wellness',
+  'Investment', 'Internal Transfers', 'Credit Card Payment',
+  'Income', 'Uncategorized', 'Personal',
 ]
 
 type TxRow = {
@@ -38,9 +41,11 @@ const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm tex
 const selectCls = 'border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200'
 
 export default function TransactionsPage() {
-  const router   = useRouter()
-  const supabase = createClient()
+  const router       = useRouter()
+  const supabase     = createClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [uploading, setUploading]         = useState(false)
   const [loading, setLoading]             = useState(true)
   const [allTx, setAllTx]                 = useState<TxRow[]>([])
   const [accounts, setAccounts]           = useState<string[]>([])
@@ -133,6 +138,31 @@ export default function TransactionsPage() {
     return true
   })
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('user_id', session.user.id)
+
+    try {
+      const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || `Server error ${res.status}`)
+      }
+      setTimeout(() => window.location.reload(), 1200)
+    } catch {
+      setUploading(false)
+    }
+  }
+
   async function handleSaveEdit() {
     if (!editTx) return
     setSaving(true)
@@ -190,24 +220,22 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-
-      <main className="flex-1 overflow-y-auto">
-
-      {/* ── Header ── */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-400 uppercase tracking-widest">Finance Tracker</p>
-          <h1 className="text-xl font-bold text-gray-900">Transactions</h1>
-        </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <Plus size={14} /> Add Transaction
-        </button>
-      </div>
+    <div className="min-h-screen bg-[#f4f4fb]">
+      <PageBanner
+        eyebrow="Finance Tracker"
+        title="Transactions"
+        right={
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 text-sm bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white border border-white/30 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Plus size={14} /> Add Transaction
+          </button>
+        }
+      />
+      <div className="flex">
+        <Sidebar onUpload={() => fileInputRef.current?.click()} />
+        <main className="flex-1 overflow-y-auto">
 
       {/* ── Filters ── */}
       <div className="px-6 pt-5 pb-4 flex flex-wrap items-center gap-3">
@@ -253,21 +281,21 @@ export default function TransactionsPage() {
             <p className="text-sm text-gray-400">Loading transactions…</p>
           </div>
         ) : allTx.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm py-24 text-center">
+          <div className="rounded-xl border border-gray-100 bg-white py-24 text-center">
             <p className="text-gray-500 text-sm mb-3">No transactions yet</p>
             <button
-              onClick={() => router.push('/upload')}
+              onClick={() => fileInputRef.current?.click()}
               className="text-sm text-indigo-600 hover:underline"
             >
               Upload a PDF to get started →
             </button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm py-24 text-center">
+          <div className="rounded-xl border border-gray-100 bg-white py-24 text-center">
             <p className="text-gray-500 text-sm">No results for this filter</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">
@@ -432,6 +460,23 @@ export default function TransactionsPage() {
         </div>
       )}
       </main>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {uploading && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
+          <img src="/uploading.gif" alt="Uploading…" className="w-64 h-64 object-contain drop-shadow-lg" />
+          <p className="mt-4 text-base font-semibold text-gray-700">Crunching your statement…</p>
+          <p className="text-sm text-gray-400 mt-1">This takes about 10–15 seconds ✨</p>
+        </div>
+      )}
     </div>
   )
 }

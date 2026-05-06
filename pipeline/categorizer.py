@@ -31,8 +31,11 @@ CATEGORIES = [
     "Health and Wellness",
     "Entertainment",
     "Shopping",
-    "Personal",
+    "Investment",
+    "Internal Transfers",
+    "Credit Card Payment",
     "Income",
+    "Uncategorized",
 ]
 
 _SYSTEM_PROMPT = f"""You are a transaction categorizer. Given a numbered list of transaction descriptions, respond with the number and category for each, one per line, in the format "N. Category". Use only categories from this list:
@@ -40,43 +43,54 @@ _SYSTEM_PROMPT = f"""You are a transaction categorizer. Given a numbered list of
 
 Rules (apply in priority order — first matching rule wins):
 
-INCOME — money deposited from an employer, institution, or government only. Payroll direct deposits, ACH credits from a named employer, tax refunds, bank interest, cashback/rewards credits issued by the bank.
-Examples: "Direct Deposit", "Payroll", "ADP", "Gusto", "Paychex", "ACH Credit [Company]", "Tax Refund IRS", "Interest Earned", "Rewards Credit".
-NOT income: Zelle, Venmo, Cash App, PayPal transfers — always treat those as Personal since the description alone cannot determine if the sender is an employer or a friend.
+CREDIT CARD PAYMENT — payments made to pay off a credit card balance. Look for card issuer names combined with payment-related keywords.
+Examples: "CHASE CREDIT CRD AUTOPAY", "CAPITAL ONE ONLINE PAYMENT", "AMEX AUTOPAY", "CITI AUTOPAY", "DISCOVER PAYMENT", any description containing a card issuer name + PAYMENT/AUTOPAY/PMT.
 
-FOOD & DRINK — restaurants, cafes, bars, fast food chains, takeout, food courts, canteens, bubble tea shops, coffee shops. The merchant must be a place where you consume food/drink on-site or get it delivered/takeaway. This includes non-English restaurant words: "Restauracja" (Polish), "Ristorante" (Italian), "Restaurante" (Spanish/Portuguese), "Restoran", etc.
-Examples: McDonald's, Starbucks, Pret A Manger, Wendy's, Chick-fil-A, Chiptole, Nando's, Wagamama, Itsu, Shake Shack, Deliveroo, Uber Eats, Just Eat, any restaurant or café name.
+INVESTMENT — transactions to/from investment platforms, brokerages, or cryptocurrency exchanges.
+Examples: Robinhood, Fidelity, Vanguard, Charles Schwab, E*Trade, TD Ameritrade, Betterment, Wealthfront, Acorns, Coinbase, Binance, Webull, any named brokerage or crypto exchange.
 
-GROCERIES — supermarkets, food markets, grocery stores, Asian food stores, convenience stores. The merchant primarily sells unprepared food/household goods for home use.
-Examples: Tesco, Sainsbury's, Waitrose, Lidl, Aldi, Whole Foods, Costco, Trader Joes, H-mart, and any market selling raw/packaged food.
+INCOME — money deposited from an employer or government only. Payroll direct deposits, ACH credits from a named employer, tax refunds, cashback/rewards credits. Also includes "InterestPaid" or "Interest Earned" on savings accounts (bank interest is real income).
+Examples: "Direct Deposit", "Payroll", "ADP", "Gusto", "Paychex", "ACH Credit [Employer]", "Tax Refund IRS", "InterestPaid", "Interest Earned", "Rewards Credit".
+NOT income: Zelle, Venmo, Cash App, PayPal person-to-person transfers — those are Internal Transfers.
+NOT income: ACH deposits or internet transfers originating from a bank (Chase, JPMorgan, Bank of America, Wells Fargo, Citi, Goldman Sachs, Marcus, etc.) — those are Internal Transfers between your own accounts, regardless of the direction or which account the statement belongs to.
 
-TRAVEL — transportation and accommodation only. Flights, trains, buses, tubes, taxis, Uber (ride, not Eats), ferries, car rental, hotels, hostels, parking.
-Examples: TfL, National Rail, Trainline, British Airways, easyJet, Uber (rides), Airbnb (accommodation), NCP parking, Delta Airlines,
-NOT travel: activity/tour bookings, Amazon, general retail even if the name mentions a city.
+INTERNAL TRANSFERS — person-to-person transfers and bank-to-bank transfers between personal accounts.
+Examples: "Zelle Payment From [Name]", "Zelle Payment To [Name]", Venmo transfers, Cash App personal transfers, PayPal friends-and-family, ACH transfers between your own bank accounts.
+CRITICAL: Any ACH deposit or internet transfer that mentions a bank name as the source (e.g., "ACHDepositInternettransferfromJPMORGANCHASEBANK", "ACH Transfer from Chase", "ACH Deposit Goldman Sachs") is an Internal Transfer, NOT income — it is money moving between your own accounts.
+NOT internal transfers: Zelle/PayPal from a business (that's Income); PayPal for a purchase (that's Shopping).
 
-ENTERTAINMENT — leisure activities, experiences, tours, ticketed events, activity booking platforms, cinemas, theatres, museums, streaming subscriptions, gaming.
-Examples: GetYourGuide, Viator, Klook, Ticketmaster, Eventbrite, Vue Cinema, Netflix, Spotify, Steam, any tour or experience booking.
+FOOD & DRINK — restaurants, cafes, bars, fast food, takeout, food delivery, coffee shops, bubble tea.
+Examples: McDonald's, Starbucks, Chick-fil-A, Chipotle, Shake Shack, Deliveroo, Uber Eats, any restaurant or café name.
 
-HEALTH AND WELLNESS — medical, dental, pharmacy, fitness, gym, yoga, mental health, personal care services (haircut, spa).
-Examples: Boots (pharmacy products), GP surgery, dentist, gym membership, therapist, physical rehab
+GROCERIES — supermarkets, grocery stores, food markets, Asian food stores, convenience stores.
+Examples: Whole Foods, Costco, Trader Joe's, H-Mart, Aldi, Walmart Grocery, any store primarily selling unprepared food.
 
-BILLS & UTILITIES — recurring service charges: internet, mobile phone plan, insurance, electricity, gas, water, council tax, streaming if it's a monthly subscription.
-Examples: T-mobile, internet bills, council tax, Lycamobile (phone top-up/plan), utility providers.
+TRAVEL — transportation and accommodation only. Flights, trains, buses, taxis, Uber rides, car rental, hotels, parking.
+Examples: Delta, United, Amtrak, MTA, Uber (ride), Lyft, Airbnb, Marriott, NCP parking.
+NOT travel: activity/tour bookings, Amazon, general retail.
 
-SHOPPING — retail purchases of physical goods online or in-store, when not covered by Groceries, Health, or Entertainment.
-Examples: Amazon, ASOS, H&M, Zara, Apple Store, electronics retailers. Default to Shopping when a merchant sells general goods and doesn't fit a more specific category. Amazon (including "AMAZON*" with order codes) is always Shopping unless the description explicitly says "Fresh" or "Pantry".
+ENTERTAINMENT — leisure, experiences, tours, ticketed events, cinemas, theatres, museums, streaming, gaming.
+Examples: Netflix, Spotify, Steam, Ticketmaster, AMC Theatres, GetYourGuide, Eventbrite.
 
-PERSONAL — financial transactions only: credit card payments, bank transfers, ATM withdrawals, direct debits to financial accounts.
+HEALTH AND WELLNESS — medical, dental, pharmacy, fitness, gym, yoga, mental health, personal care.
+Examples: CVS Pharmacy, Walgreens, gym membership, dentist, therapist, spa, haircut.
+
+BILLS & UTILITIES — recurring service charges: internet, phone plan, insurance, electricity, gas, water, subscriptions.
+Examples: AT&T, Verizon, T-Mobile, internet provider, insurance companies, utility providers.
+
+SHOPPING — retail purchases of physical goods not covered by other categories.
+Examples: Amazon, ASOS, H&M, Zara, Apple Store, Target, Best Buy. Amazon is always Shopping unless description says "Fresh" or "Pantry".
+
+UNCATEGORIZED — use ONLY when the description is truly unrecognizable and no other category applies. Last resort.
 
 Important notes:
-- Ignore location suffixes in merchant names (e.g., "LONDON", "LONDONLND", "W1D", phone numbers, alphanumeric order IDs) — they are not categories.
-- The same brand/merchant must always get the same category regardless of the suffix or transaction ID appended.
-- When a merchant name is ambiguous, consider what the business primarily does.
+- Ignore location suffixes, phone numbers, and alphanumeric order IDs in merchant names.
+- The same merchant always gets the same category regardless of suffix or transaction ID.
 
 Respond with ONLY numbered category lines, nothing else. Example output:
 1. Food & Drink
 2. Shopping
-3. Travel
+3. Investment
 Every input number must appear exactly once."""
 
 
@@ -110,8 +124,8 @@ def _normalize(result: str) -> str:
     for cat in CATEGORIES:
         if cat.lower() in result.lower():
             return cat
-    logger.warning("Unrecognized category from Groq: %r — defaulting to 'Personal'", result)
-    return "Personal"
+    logger.warning("Unrecognized category from Groq: %r — defaulting to 'Uncategorized'", result)
+    return "Uncategorized"
 
 
 def _batch_categorize(descriptions: list[str], client: Groq) -> list[str]:
@@ -130,7 +144,7 @@ def _batch_categorize(descriptions: list[str], client: Groq) -> list[str]:
         )
     except Exception as exc:
         logger.error("Groq API call failed (%s) — defaulting %d items to 'Personal'", exc, len(descriptions))
-        return ["Personal"] * len(descriptions)
+        return ["Uncategorized"] * len(descriptions)
 
     raw_lines = response.choices[0].message.content.strip().splitlines()
 
@@ -152,7 +166,7 @@ def _batch_categorize(descriptions: list[str], client: Groq) -> list[str]:
             "Batch response missing %d/%d categories (indices: %s); defaulting to 'Personal'",
             len(missing), len(descriptions), missing,
         )
-    results = [parsed.get(i, "Personal") for i in range(1, len(descriptions) + 1)]
+    results = [parsed.get(i, "Uncategorized") for i in range(1, len(descriptions) + 1)]
     for i, (desc, cat) in enumerate(zip(descriptions, results), 1):
         logger.info("  %d. %s --> %s", i, desc, cat)
     return results

@@ -3,15 +3,19 @@ import { PieChart, Pie, Tooltip, ResponsiveContainer } from 'recharts'
 import { motion } from 'framer-motion'
 
 export const CATEGORY_COLORS: Record<string, string> = {
-  'Food & Drink':       '#f97316',
-  'Groceries':          '#10b981',
-  'Shopping':           '#f59e0b',
-  'Travel':             '#06b6d4',
-  'Bills & Utilities':  '#6366f1',
-  'Entertainment':      '#8b5cf6',
-  'Health and Wellness':'#ec4899',
-  'Personal':           '#6b7280',
-  'Income':             '#22c55e',
+  'Food & Drink':        '#f97316',
+  'Groceries':           '#10b981',
+  'Shopping':            '#f59e0b',
+  'Travel':              '#06b6d4',
+  'Bills & Utilities':   '#6366f1',
+  'Entertainment':       '#8b5cf6',
+  'Health and Wellness': '#ec4899',
+  'Investment':          '#14b8a6',
+  'Internal Transfers':  '#64748b',
+  'Credit Card Payment': '#94a3b8',
+  'Income':              '#22c55e',
+  'Uncategorized':       '#d1d5db',
+  'Personal':            '#6b7280',
 }
 
 interface CategoryDonutProps {

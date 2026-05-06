@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import Sidebar from '@/components/Sidebar'
+import PageBanner from '@/components/PageBanner'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -19,9 +20,19 @@ const QUARTERS: Record<string, number[]> = {
   Q4:  [9,10,11],
 }
 
-const EXPENSE_CATEGORIES = [
-  'Food & Drink','Groceries','Shopping','Travel',
-  'Bills & Utilities','Entertainment','Health and Wellness','Personal',
+// All outflow categories in stack order (transfers/investments at bottom, spending on top)
+const OUTFLOW_CATEGORIES = [
+  'Investment',
+  'Internal Transfers',
+  'Credit Card Payment',
+  'Food & Drink',
+  'Groceries',
+  'Shopping',
+  'Travel',
+  'Bills & Utilities',
+  'Entertainment',
+  'Health and Wellness',
+  'Uncategorized',
 ]
 
 type TxRow = { date: string; amount: number; category: string }
@@ -43,10 +54,10 @@ export default function TrendsPage() {
   const router   = useRouter()
   const supabase = createClient()
 
-  const [loading, setLoading]   = useState(true)
-  const [allTx, setAllTx]       = useState<TxRow[]>([])
-  const [quarter, setQuarter]   = useState('All')
-  const [year, setYear]         = useState(new Date().getFullYear())
+  const [loading, setLoading] = useState(true)
+  const [allTx, setAllTx]     = useState<TxRow[]>([])
+  const [quarter, setQuarter] = useState('All')
+  const [year, setYear]       = useState(new Date().getFullYear())
 
   useEffect(() => {
     async function fetchData() {
@@ -65,22 +76,24 @@ export default function TrendsPage() {
     fetchData()
   }, [])
 
-  const now           = new Date()
-  const monthIndices  = QUARTERS[quarter]
+  const now          = new Date()
+  const monthIndices = QUARTERS[quarter]
 
   const monthData: MonthSummary[] = monthIndices
     .filter(mi => year < now.getFullYear() || mi <= now.getMonth())
     .map(mi => {
-      const key  = `${year}-${String(mi + 1).padStart(2, '0')}`
-      const txs  = allTx.filter(tx => tx.date.startsWith(key))
+      const key = `${year}-${String(mi + 1).padStart(2, '0')}`
+      const txs = allTx.filter(tx => tx.date.startsWith(key))
 
+      const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
       const income   = txs.filter(tx => tx.category === 'Income' || tx.amount < 0)
                           .reduce((s, tx) => s + Math.abs(tx.amount), 0)
-      const expenses = txs.filter(tx => tx.category !== 'Income' && tx.amount > 0)
+      const expenses = txs.filter(tx => !TRANSFERS.includes(tx.category) && tx.amount > 0)
                           .reduce((s, tx) => s + tx.amount, 0)
 
+      // Per-category outflow amounts (debits only)
       const cats: Record<string, number> = {}
-      for (const cat of EXPENSE_CATEGORIES) {
+      for (const cat of OUTFLOW_CATEGORIES) {
         cats[cat] = Math.round(
           txs.filter(tx => tx.category === cat && tx.amount > 0)
              .reduce((s, tx) => s + tx.amount, 0) * 100
@@ -88,17 +101,17 @@ export default function TrendsPage() {
       }
 
       return {
-        month: MONTH_LABELS[mi],
+        month:      MONTH_LABELS[mi],
         monthIndex: mi,
-        income:   Math.round(income   * 100) / 100,
-        expenses: Math.round(expenses * 100) / 100,
-        net:      Math.round((income - expenses) * 100) / 100,
+        income:     Math.round(income   * 100) / 100,
+        expenses:   Math.round(expenses * 100) / 100,
+        net:        Math.round((income - expenses) * 100) / 100,
         ...cats,
       }
     })
 
-  // only render bars for categories that have any spend in the period
-  const activeCats = EXPENSE_CATEGORIES.filter(cat =>
+  // Only render bars for categories that have any activity in the period
+  const activeCats = OUTFLOW_CATEGORIES.filter(cat =>
     monthData.some(m => (m[cat] as number) > 0)
   )
 
@@ -113,27 +126,24 @@ export default function TrendsPage() {
   const isEmpty = !loading && monthData.every(m => m.expenses === 0 && m.income === 0)
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-
-      <main className="flex-1 overflow-y-auto">
-
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-widest">Finance Tracker</p>
-            <h1 className="text-xl font-bold text-gray-900">Spending Trends</h1>
-          </div>
+    <div className="min-h-screen bg-[#f4f4fb]">
+      <PageBanner
+        eyebrow="Finance Tracker"
+        title="Spending Trends"
+        right={
           <select
             value={year}
             onChange={e => setYear(Number(e.target.value))}
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200"
+            className="bg-white/20 backdrop-blur-sm text-white border border-white/30 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
           >
-            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+            {availableYears.map(y => <option key={y} value={y} className="text-gray-900 bg-white">{y}</option>)}
           </select>
-        </div>
-
-        <div className="px-6 py-6 flex flex-col gap-6">
+        }
+      />
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1">
+          <div className="px-6 py-6 flex flex-col gap-6">
 
           {/* Quarter tabs */}
           <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
@@ -154,15 +164,15 @@ export default function TrendsPage() {
 
           {/* Summary totals */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Income</p>
               <p className="text-2xl font-bold text-emerald-600">${fmt(totalIncome)}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Expenses</p>
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Spending</p>
               <p className="text-2xl font-bold text-gray-900">${fmt(totalExpenses)}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Net</p>
               <p className={`text-2xl font-bold ${totalNet >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                 {totalNet >= 0 ? '+' : '–'}${fmt(Math.abs(totalNet))}
@@ -170,10 +180,10 @@ export default function TrendsPage() {
             </div>
           </div>
 
-          {/* Stacked bar chart */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Monthly Spend</p>
-            <p className="text-sm font-semibold text-gray-900 mb-5">By category</p>
+          {/* Income vs stacked outflows chart */}
+          <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Monthly</p>
+            <p className="text-sm font-semibold text-gray-900 mb-5">Income vs Where It Went</p>
 
             {loading ? (
               <div className="h-64 flex items-center justify-center">
@@ -184,8 +194,13 @@ export default function TrendsPage() {
                 No data for this period
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={monthData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="35%">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={monthData}
+                  margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+                  barCategoryGap="30%"
+                  barGap={4}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                   <XAxis
                     dataKey="month"
@@ -201,19 +216,25 @@ export default function TrendsPage() {
                     width={52}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string) => [`$${value.toFixed(2)}`, name]}
+                    formatter={(value, name) => [`$${Number(value).toFixed(2)}`, name as string]}
                     contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
                     cursor={{ fill: '#f9fafb' }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 16 }} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 16 }} />
+
+                  {/* Income — left grouped bar */}
+                  <Bar dataKey="income" name="Income" stackId="income" fill="#1e3a5f" radius={[4, 4, 0, 0]} maxBarSize={48} />
+
+                  {/* All outflows — stacked together as one grouped bar (right) */}
                   {activeCats.map((cat, i) => (
                     <Bar
                       key={cat}
                       dataKey={cat}
-                      stackId="a"
+                      stackId="outflow"
+                      name={cat}
                       fill={CATEGORY_COLORS[cat] ?? '#6b7280'}
                       radius={i === activeCats.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                      maxBarSize={64}
+                      maxBarSize={48}
                     />
                   ))}
                 </BarChart>
@@ -233,7 +254,7 @@ export default function TrendsPage() {
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {monthData.map(m => (
-                  <div key={m.month} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                  <div key={m.month} className="bg-white rounded-xl border border-gray-100 p-4">
                     <p className="text-sm font-semibold text-gray-800 mb-3">{m.month} {year}</p>
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs">
@@ -241,7 +262,7 @@ export default function TrendsPage() {
                         <span className="text-emerald-600 font-medium">+${m.income.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Expenses</span>
+                        <span className="text-gray-400">Spending</span>
                         <span className="text-gray-800 font-medium">–${m.expenses.toFixed(2)}</span>
                       </div>
                       <div className="border-t border-gray-100 pt-1.5 flex justify-between text-xs">
@@ -258,8 +279,9 @@ export default function TrendsPage() {
           </div>
 
           <div className="pb-4" />
-        </div>
-      </main>
+          </div>
+        </main>
+      </div>
     </div>
   )
 }
