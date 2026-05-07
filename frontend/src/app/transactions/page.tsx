@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search, X, Trash2 } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import PageBanner from '@/components/PageBanner'
 import { motion } from 'framer-motion'
@@ -65,7 +65,11 @@ export default function TransactionsPage() {
   const [editTx, setEditTx]             = useState<TxRow | null>(null)
   const [editCategory, setEditCategory] = useState('')
   const [editDesc, setEditDesc]         = useState('')
+  const [editAmount, setEditAmount]     = useState('')
+  const [applyToAll, setApplyToAll]     = useState(false)
   const [saving, setSaving]             = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting]           = useState(false)
 
   // add modal
   const [showAdd, setShowAdd] = useState(false)
@@ -166,14 +170,55 @@ export default function TransactionsPage() {
   async function handleSaveEdit() {
     if (!editTx) return
     setSaving(true)
-    await supabase
-      .from('transactions')
-      .update({ category: editCategory, description: editDesc })
-      .eq('id', editTx.id)
-    setAllTx(prev => prev.map(t =>
-      t.id === editTx.id ? { ...t, category: editCategory, description: editDesc } : t
-    ))
+    const newAmount = parseFloat(editAmount) || Math.abs(editTx.amount)
+    const isCredit = editTx.type === 'credit'
+
+    if (applyToAll) {
+      // Bulk update all rows with the same description for this user
+      await supabase
+        .from('transactions')
+        .update({ category: editCategory })
+        .eq('user_id', userId)
+        .eq('description', editTx.description)
+      // Also update description + amount on just this row if they changed
+      if (editDesc !== editTx.description || newAmount !== Math.abs(editTx.amount)) {
+        await supabase
+          .from('transactions')
+          .update({ description: editDesc, amount: newAmount })
+          .eq('id', editTx.id)
+      }
+      // Store the user's preference so future uploads use it automatically
+      const form = new FormData()
+      form.append('user_id', userId)
+      form.append('description', editTx.description)
+      form.append('category', editCategory)
+      await fetch('http://localhost:8000/set-override', { method: 'POST', body: form })
+
+      setAllTx(prev => prev.map(t =>
+        t.description === editTx.description
+          ? { ...t, category: editCategory, ...(t.id === editTx.id ? { description: editDesc, amount: isCredit ? -newAmount : newAmount } : {}) }
+          : t
+      ))
+    } else {
+      await supabase
+        .from('transactions')
+        .update({ category: editCategory, description: editDesc, amount: newAmount })
+        .eq('id', editTx.id)
+      setAllTx(prev => prev.map(t =>
+        t.id === editTx.id ? { ...t, category: editCategory, description: editDesc, amount: isCredit ? -newAmount : newAmount } : t
+      ))
+    }
+
     setSaving(false)
+    setEditTx(null)
+  }
+
+  async function handleDeleteTx() {
+    if (!editTx) return
+    setDeleting(true)
+    await supabase.from('transactions').delete().eq('id', editTx.id)
+    setAllTx(prev => prev.filter(t => t.id !== editTx.id))
+    setDeleting(false)
     setEditTx(null)
   }
 
@@ -316,7 +361,7 @@ export default function TransactionsPage() {
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: Math.min(i * 0.015, 0.3), duration: 0.2 }}
-                      onClick={() => { setEditTx(tx); setEditCategory(tx.category); setEditDesc(tx.description) }}
+                      onClick={() => { setEditTx(tx); setEditCategory(tx.category); setEditDesc(tx.description); setEditAmount(Math.abs(tx.amount).toFixed(2)); setConfirmDelete(false); setApplyToAll(false) }}
                       className="hover:bg-indigo-50/40 cursor-pointer transition-colors"
                     >
                       <td className="px-5 py-3 text-gray-500 whitespace-nowrap text-xs">
@@ -352,51 +397,101 @@ export default function TransactionsPage() {
       {editTx && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={() => setEditTx(null)}
+          onClick={() => { setEditTx(null); setConfirmDelete(false) }}
         >
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <h2 className="text-base font-semibold text-gray-900 mb-5">Edit Transaction</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Description</label>
-                <input
-                  type="text"
-                  value={editDesc}
-                  onChange={e => setEditDesc(e.target.value)}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Category</label>
-                <select
-                  value={editCategory}
-                  onChange={e => setEditCategory(e.target.value)}
-                  className={inputCls}
-                >
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-1 bg-gray-50 rounded-lg px-3 py-2">
-                  <p className="text-xs text-gray-400">Date</p>
-                  <p className="text-sm text-gray-700 mt-0.5">
-                    {new Date(editTx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
-                <div className="flex-1 bg-gray-50 rounded-lg px-3 py-2">
-                  <p className="text-xs text-gray-400">Amount</p>
-                  <p className="text-sm text-gray-700 mt-0.5">${Math.abs(editTx.amount).toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-6">
-              <button onClick={() => setEditTx(null)} className="flex-1 text-sm border border-gray-200 rounded-lg py-2 text-gray-600 hover:bg-gray-50 transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleSaveEdit} disabled={saving} className="flex-1 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg py-2 transition-colors">
-                {saving ? 'Saving…' : 'Save'}
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-gray-900">Edit Transaction</h2>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                title="Delete transaction"
+              >
+                <Trash2 size={15} />
               </button>
             </div>
+
+            {confirmDelete ? (
+              <div className="py-4">
+                <p className="text-sm text-gray-700 mb-1">Delete this transaction?</p>
+                <p className="text-xs text-gray-400 mb-6">{editTx.description} · ${Math.abs(editTx.amount).toFixed(2)}</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmDelete(false)} className="flex-1 text-sm border border-gray-200 rounded-lg py-2 text-gray-600 hover:bg-gray-50 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={handleDeleteTx} disabled={deleting} className="flex-1 text-sm bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg py-2 transition-colors">
+                    {deleting ? 'Deleting…' : 'Delete permanently'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Description</label>
+                    <input
+                      type="text"
+                      value={editDesc}
+                      onChange={e => setEditDesc(e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Category</label>
+                    <select
+                      value={editCategory}
+                      onChange={e => setEditCategory(e.target.value)}
+                      className={inputCls}
+                    >
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {(() => {
+                      const matchCount = allTx.filter(t => t.description === editTx?.description).length
+                      return matchCount > 1 ? (
+                        <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={applyToAll}
+                            onChange={e => setApplyToAll(e.target.checked)}
+                            className="accent-indigo-400 w-3 h-3 opacity-70"
+                          />
+                          <span className="text-xs text-gray-400">
+                            Apply to all {matchCount} &ldquo;{editTx?.description}&rdquo; transactions
+                          </span>
+                        </label>
+                      ) : null
+                    })()}
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-gray-50 rounded-lg px-3 py-2">
+                      <p className="text-xs text-gray-400">Date</p>
+                      <p className="text-sm text-gray-700 mt-0.5">
+                        {new Date(editTx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs text-gray-500 mb-1 block">Amount ($)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editAmount}
+                        onChange={e => setEditAmount(e.target.value)}
+                        className={`${inputCls} [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-6">
+                  <button onClick={() => setEditTx(null)} className="flex-1 text-sm border border-gray-200 rounded-lg py-2 text-gray-600 hover:bg-gray-50 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={handleSaveEdit} disabled={saving} className="flex-1 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg py-2 transition-colors">
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

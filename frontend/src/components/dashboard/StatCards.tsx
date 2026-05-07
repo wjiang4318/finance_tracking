@@ -41,7 +41,7 @@ export default function StatCards({ currentMonthSpend, lastMonthSpend, topCatego
 
   const cards = [
     {
-      label: 'This Month',
+      label: 'Last 30 Days',
       icon: <Receipt size={14} className="text-gray-400" />,
       value: (
         <span className="text-3xl font-bold text-gray-900">
@@ -51,7 +51,7 @@ export default function StatCards({ currentMonthSpend, lastMonthSpend, topCatego
       sub: <span className="text-xs text-gray-400">total spend</span>,
     },
     {
-      label: 'vs Last Month',
+      label: 'vs Prior 30 Days',
       icon: isOver
         ? <TrendingUp size={14} className="text-red-400" />
         : <TrendingDown size={14} className="text-emerald-500" />,
@@ -61,14 +61,14 @@ export default function StatCards({ currentMonthSpend, lastMonthSpend, topCatego
         </span>
       ),
       sub: deltaPercent
-        ? <span className={`text-xs ${isOver ? 'text-red-400' : 'text-emerald-500'}`}>{deltaPercent}% {isOver ? 'more' : 'less'} than last month</span>
-        : <span className="text-xs text-gray-400">no data last month</span>,
+        ? <span className={`text-xs ${isOver ? 'text-red-400' : 'text-emerald-500'}`}>{deltaPercent}% {isOver ? 'more' : 'less'} than prior period</span>
+        : <span className="text-xs text-gray-400">no data prior period</span>,
     },
     {
       label: 'Top Category',
       icon: <Tag size={14} className="text-gray-400" />,
       value: <span className="text-2xl font-bold text-gray-900">{topCategory || '—'}</span>,
-      sub: <span className="text-xs text-gray-400">highest spend this month</span>,
+      sub: <span className="text-xs text-gray-400">highest spend last 30 days</span>,
     },
     {
       label: 'Transactions',
@@ -78,7 +78,7 @@ export default function StatCards({ currentMonthSpend, lastMonthSpend, topCatego
           <CountUp end={transactionCount} duration={1.2} />
         </span>
       ),
-      sub: <span className="text-xs text-gray-400">this month</span>,
+      sub: <span className="text-xs text-gray-400">last 30 days</span>,
     },
   ]
 

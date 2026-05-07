@@ -53,6 +53,22 @@ create table public.merchant_categories (
   created_at timestamp with time zone default now()
 );
 
+create table user_category_overrides (
+  user_id             uuid not null,
+  cleaned_description text not null,
+  category            text not null,
+  primary key (user_id, cleaned_description)
+);
+
+alter table user_category_overrides enable row level security;
+
+create policy "own overrides only"
+  on user_category_overrides
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+
 -- Row Level Security
 alter table public.profiles enable row level security;
 alter table public.accounts enable row level security;
@@ -81,3 +97,11 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+
+create table user_category_overrides (
+  user_id             uuid not null,
+  cleaned_description text not null,
+  category            text not null,
+  primary key (user_id, cleaned_description)
+);

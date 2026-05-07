@@ -16,7 +16,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from groq import Groq
 
-from database.connector import get_cached_categories_bulk, cache_categories_bulk
+from database.connector import (
+    get_cached_categories_bulk,
+    cache_categories_bulk,
+    get_user_category_overrides_bulk,
+)
 
 load_dotenv()
 
@@ -195,14 +199,15 @@ def _batch_categorize(descriptions: list[str], client: Groq) -> list[str]:
     return results
 
 
-def categorize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.DataFrame:
     """
     Add a 'category' column to a transactions DataFrame.
 
     1. Apply deterministic local rules (CC payments, etc.) — no API needed.
-    2. Bulk cache lookup for remaining descriptions (1 Supabase query).
-    3. Batch API call for anything still uncached.
-    4. Merge all results back in original order.
+    2. User-specific overrides from user_category_overrides table (1 query, if user_id given).
+    3. Bulk shared cache lookup for remaining descriptions (1 Supabase query).
+    4. Batch Groq API call for anything still uncached.
+    5. Merge all results back in original order.
     """
     start_time = time.time()
 
@@ -219,44 +224,61 @@ def categorize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     needs_lookup_indices = [i for i in range(len(cleaned)) if i not in pre_assigned]
     unique_for_lookup = list(dict.fromkeys(cleaned[i] for i in needs_lookup_indices))
 
+    user_overrides: dict[str, str] = {}
     cache_results: dict[str, str] = {}
 
     if unique_for_lookup:
-        # --- Step 2: bulk cache lookup (1 Supabase query) ---
-        cache_results = get_cached_categories_bulk(unique_for_lookup)
-        uncached_descs = [d for d in unique_for_lookup if d not in cache_results]
+        # --- Step 2: user-specific overrides (1 Supabase query) ---
+        if user_id:
+            user_overrides = get_user_category_overrides_bulk(user_id, unique_for_lookup)
 
-        cache_hits = sum(1 for i in needs_lookup_indices if cleaned[i] in cache_results)
-        logger.info(
-            "%d transactions → %d unique | %d local rules, %d cached, %d need API",
-            len(descriptions), len(dict.fromkeys(cleaned)),
-            len(pre_assigned), cache_hits, len(uncached_descs),
-        )
+        still_needed = [d for d in unique_for_lookup if d not in user_overrides]
 
-        # --- Step 3: batch API call for uncached descriptions (chunks of 20) ---
-        if uncached_descs:
-            client = _get_client()
-            chunk_size = 20
-            chunks = [uncached_descs[i:i+chunk_size] for i in range(0, len(uncached_descs), chunk_size)]
-            logger.info("%d descriptions → %d API call(s)", len(uncached_descs), len(chunks))
+        if still_needed:
+            # --- Step 3: bulk shared cache lookup (1 Supabase query) ---
+            cache_results = get_cached_categories_bulk(still_needed)
+            uncached_descs = [d for d in still_needed if d not in cache_results]
 
-            new_categories = []
-            for i, chunk in enumerate(chunks, 1):
-                batch = _batch_categorize(chunk, client)
-                new_categories.extend(batch)
-                new_mappings = dict(zip(chunk, batch))
-                cache_results.update(new_mappings)
-                cache_categories_bulk(new_mappings)
-                logger.info("Cached batch %d/%d", i, len(chunks))
-            logger.info("Added %d new descriptions to cache", len(new_categories))
+            cache_hits = sum(1 for i in needs_lookup_indices if cleaned[i] in cache_results)
+            logger.info(
+                "%d transactions → %d unique | %d local rules, %d user overrides, %d cached, %d need API",
+                len(descriptions), len(dict.fromkeys(cleaned)),
+                len(pre_assigned), len(user_overrides), cache_hits, len(uncached_descs),
+            )
+
+            # --- Step 4: batch API call for uncached descriptions (chunks of 20) ---
+            if uncached_descs:
+                client = _get_client()
+                chunk_size = 20
+                chunks = [uncached_descs[i:i+chunk_size] for i in range(0, len(uncached_descs), chunk_size)]
+                logger.info("%d descriptions → %d API call(s)", len(uncached_descs), len(chunks))
+
+                new_categories = []
+                for i, chunk in enumerate(chunks, 1):
+                    batch = _batch_categorize(chunk, client)
+                    new_categories.extend(batch)
+                    new_mappings = dict(zip(chunk, batch))
+                    cache_results.update(new_mappings)
+                    cache_categories_bulk(new_mappings)
+                    logger.info("Cached batch %d/%d", i, len(chunks))
+                logger.info("Added %d new descriptions to cache", len(new_categories))
+        else:
+            logger.info(
+                "%d transactions → all resolved by local rules + user overrides",
+                len(descriptions),
+            )
     else:
         logger.info("%d transactions → all %d matched local rules", len(descriptions), len(pre_assigned))
 
-    # --- Step 4: assemble final categories in original order ---
-    categories = [
-        pre_assigned[i] if i in pre_assigned else cache_results.get(cleaned[i], "Uncategorized")
-        for i in range(len(cleaned))
-    ]
+    # --- Step 5: assemble final categories in original order ---
+    categories = []
+    for i in range(len(cleaned)):
+        if i in pre_assigned:
+            categories.append(pre_assigned[i])
+        elif cleaned[i] in user_overrides:
+            categories.append(user_overrides[cleaned[i]])
+        else:
+            categories.append(cache_results.get(cleaned[i], "Uncategorized"))
 
     elapsed = time.time() - start_time
     logger.info("Categorization finished in %.1fs", elapsed)

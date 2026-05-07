@@ -24,7 +24,6 @@ const QUARTERS: Record<string, number[]> = {
 const OUTFLOW_CATEGORIES = [
   'Investment',
   'Internal Transfers',
-  'Credit Card Payment',
   'Food & Drink',
   'Groceries',
   'Shopping',

@@ -295,7 +295,7 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
 
         match = _TRANSACTION_ROW.match(line)
         if match:
-            trans_date, post_date, description, amount1, amount2 = match.groups()
+            trans_date, _, description, amount1, amount2 = match.groups()
             description = description.strip()
 
             if _CC_PAYMENT_FILTER.search(description):
@@ -311,7 +311,6 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
 
             transactions.append({
                 "trans_date":  trans_date,
-                #"post_date":   post_date,
                 "description": description,
                 "amount1":     amount1_num,
                 "amount2":     amount2_num,

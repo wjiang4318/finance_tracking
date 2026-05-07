@@ -47,11 +47,11 @@ export default function CategoryDonut({ data, total, loading }: CategoryDonutPro
       className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col"
     >
       <p className="text-xs text-gray-400 mb-1">Spending by Category</p>
-      <p className="text-sm font-semibold text-gray-800 mb-4">This month</p>
+      <p className="text-sm font-semibold text-gray-800 mb-4">Last 30 days</p>
 
       {isEmpty ? (
         <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center px-4">
-          Upload a statement to see category breakdown
+          No spending in the last 30 days
         </div>
       ) : (
         <div className="flex flex-col gap-4">

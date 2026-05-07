@@ -2,7 +2,8 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 import tempfile, os, logging
-from database.connector import upload_transactions
+from database.connector import upload_transactions, upsert_user_category_override
+from pipeline.categorizer import _clean_description
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -36,3 +37,11 @@ async def upload_pdf(file: UploadFile = File(...), user_id: str = Form(...)): #a
         return result
     finally: # finally → always runs, even if an error occurs
         os.remove(tmp_path) #os.remove() → manually deletes the temp file (cleanup)
+
+
+@app.post("/set-override")
+async def set_override(user_id: str = Form(...), description: str = Form(...), category: str = Form(...)):
+    """Store a user's permanent category preference for a merchant description."""
+    cleaned = _clean_description(description)
+    upsert_user_category_override(user_id, cleaned, category)
+    return {"cleaned_description": cleaned, "category": category}

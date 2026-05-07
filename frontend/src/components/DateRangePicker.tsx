@@ -4,7 +4,7 @@ import { DayPicker } from 'react-day-picker'
 import type { DateRange } from 'react-day-picker'
 import 'react-day-picker/style.css'
 import { CalendarDays, ChevronDown } from 'lucide-react'
-import { format, subDays, subMonths, subYears } from 'date-fns'
+import { format, parse, isValid, subDays, subMonths, subYears } from 'date-fns'
 
 export type DateRangeValue = { from: Date | null; to: Date | null }
 
@@ -25,10 +25,22 @@ function fmt(d: Date | null) {
   return d ? format(d, 'M/d/yyyy') : ''
 }
 
+function parseTyped(text: string): Date | null {
+  if (!text.trim()) return null
+  const formats = ['M/d/yyyy', 'MM/dd/yyyy', 'M/d/yy', 'MM/dd/yy']
+  for (const f of formats) {
+    const d = parse(text.trim(), f, new Date())
+    if (isValid(d)) return d
+  }
+  return null
+}
+
 export default function DateRangePicker({ value, onChange }: DateRangePickerProps) {
   const [open, setOpen]           = useState(false)
   const [draft, setDraft]         = useState<DateRangeValue>(value)
   const [activePreset, setActive] = useState<string | null>(null)
+  const [fromText, setFromText]   = useState('')
+  const [toText, setToText]       = useState('')
   const ref = useRef<HTMLDivElement>(null)
 
   // Close on outside click
@@ -42,6 +54,8 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
 
   function openPicker() {
     setDraft(value)
+    setFromText(fmt(value.from))
+    setToText(fmt(value.to))
     setActive(null)
     setOpen(true)
   }
@@ -49,6 +63,8 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
   function applyPreset(preset: (typeof PRESETS)[number]) {
     const r = preset.getRange()
     setDraft(r)
+    setFromText(fmt(r.from))
+    setToText(fmt(r.to))
     setActive(preset.label)
   }
 
@@ -68,8 +84,31 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
   }
 
   function handleRdpSelect(range: DateRange | undefined) {
-    setDraft({ from: range?.from ?? null, to: range?.to ?? null })
+    const next = { from: range?.from ?? null, to: range?.to ?? null }
+    setDraft(next)
+    setFromText(fmt(next.from))
+    setToText(fmt(next.to))
     setActive(null)
+  }
+
+  function commitFrom(text: string) {
+    const d = parseTyped(text)
+    if (d) {
+      setDraft(prev => ({ ...prev, from: d }))
+      setFromText(fmt(d))
+    } else {
+      setFromText(fmt(draft.from))
+    }
+  }
+
+  function commitTo(text: string) {
+    const d = parseTyped(text)
+    if (d) {
+      setDraft(prev => ({ ...prev, to: d }))
+      setToText(fmt(d))
+    } else {
+      setToText(fmt(draft.to))
+    }
   }
 
   // Label shown on trigger button
@@ -99,15 +138,29 @@ export default function DateRangePicker({ value, onChange }: DateRangePickerProp
         >
           {/* Calendar */}
           <div className="p-4 border-r border-gray-100">
-            {/* From / To display */}
+            {/* From / To inputs */}
             <div className="flex items-center gap-3 mb-3">
-              <div className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-gray-50">
-                <span className="text-xs text-gray-400 mr-2">From</span>
-                {fmt(draft.from) || <span className="text-gray-300">—</span>}
+              <div className="flex-1 flex items-center border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus-within:border-indigo-400 transition-colors">
+                <span className="text-xs text-gray-400 mr-2 shrink-0">From</span>
+                <input
+                  className="flex-1 outline-none text-gray-700 bg-transparent placeholder-gray-300 min-w-0"
+                  placeholder="M/D/YYYY"
+                  value={fromText}
+                  onChange={e => { setFromText(e.target.value); setActive(null) }}
+                  onBlur={e => commitFrom(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitFrom(fromText) }}
+                />
               </div>
-              <div className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-gray-50">
-                <span className="text-xs text-gray-400 mr-2">To</span>
-                {fmt(draft.to) || <span className="text-gray-300">—</span>}
+              <div className="flex-1 flex items-center border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus-within:border-indigo-400 transition-colors">
+                <span className="text-xs text-gray-400 mr-2 shrink-0">To</span>
+                <input
+                  className="flex-1 outline-none text-gray-700 bg-transparent placeholder-gray-300 min-w-0"
+                  placeholder="M/D/YYYY"
+                  value={toText}
+                  onChange={e => { setToText(e.target.value); setActive(null) }}
+                  onBlur={e => commitTo(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitTo(toText) }}
+                />
               </div>
             </div>
 
