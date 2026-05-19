@@ -21,6 +21,7 @@ interface CategoryDonutProps {
   data: { name: string; value: number }[]
   total: number
   loading: boolean
+  monthLabel: string
 }
 
 function SkeletonDonut() {
@@ -34,7 +35,7 @@ function SkeletonDonut() {
   )
 }
 
-export default function CategoryDonut({ data, total, loading }: CategoryDonutProps) {
+export default function CategoryDonut({ data, total, loading, monthLabel }: CategoryDonutProps) {
   if (loading) return <SkeletonDonut />
 
   const isEmpty = data.length === 0 || total === 0
@@ -47,11 +48,11 @@ export default function CategoryDonut({ data, total, loading }: CategoryDonutPro
       className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col"
     >
       <p className="text-xs text-gray-400 mb-1">Spending by Category</p>
-      <p className="text-sm font-semibold text-gray-800 mb-4">Last 30 days</p>
+      <p className="text-sm font-semibold text-gray-800 mb-4">{monthLabel}</p>
 
       {isEmpty ? (
         <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center px-4">
-          No spending in the last 30 days
+          No spending in {monthLabel}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
@@ -78,7 +79,7 @@ export default function CategoryDonut({ data, total, loading }: CategoryDonutPro
             </ResponsiveContainer>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center">
-                <p className="text-lg font-bold text-gray-900">${total >= 1000 ? `${(total/1000).toFixed(1)}k` : total.toFixed(0)}</p>
+                <p className="text-lg font-bold text-gray-900">${total >= 1000 ? `${(total/1000).toFixed(1)}k` : total.toFixed(2)}</p>
                 <p className="text-xs text-gray-400">total</p>
               </div>
             </div>

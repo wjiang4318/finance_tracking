@@ -85,6 +85,8 @@ export default function DashboardPage() {
   const [categoryData, setCategoryData]             = useState<{ name: string; value: number }[]>([])
   const [netAccumulatedData, setNetAccumulatedData] = useState<{ month: string; cumulative: number }[]>([])
   const [recentTx, setRecentTx]                     = useState<TxRow[]>([])
+  const [currentMonthLabel, setCurrentMonthLabel]   = useState('')
+  const [lastMonthLabel, setLastMonthLabel]         = useState('')
 
   useEffect(() => {
     async function fetchData() {
@@ -93,12 +95,7 @@ export default function DashboardPage() {
 
       const userId = session.user.id
       const now = new Date()
-      const sixMonthsAgo      = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0]
-      const thirtyDaysAgo     = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      const sixtyDaysAgo      = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      const currentMonthStart = thirtyDaysAgo
-      const lastMonthStart    = sixtyDaysAgo
-      const lastMonthEnd      = thirtyDaysAgo
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().split('T')[0]
 
       const { data: rows } = await supabase
         .from('transactions')
@@ -108,6 +105,20 @@ export default function DashboardPage() {
         .order('date', { ascending: false })
 
       if (!rows) { setLoading(false); return }
+
+      // Anchor to the most recent transaction's month so statement upload lag doesn't show $0
+      const latestDate = rows.length > 0 ? new Date(rows[0].date + 'T00:00:00') : now
+      const anchorYear  = latestDate.getFullYear()
+      const anchorMonth = latestDate.getMonth()
+
+      const currentMonthStart = new Date(anchorYear, anchorMonth, 1).toISOString().split('T')[0]
+      const lastMonthStart    = new Date(anchorYear, anchorMonth - 1, 1).toISOString().split('T')[0]
+      const lastMonthEnd      = new Date(anchorYear, anchorMonth, 0).toISOString().split('T')[0]
+
+      const fmt = (y: number, m: number) =>
+        new Date(y, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' })
+      setCurrentMonthLabel(fmt(anchorYear, anchorMonth))
+      setLastMonthLabel(fmt(anchorYear, anchorMonth - 1))
 
       const currentRows = rows.filter(tx => tx.date >= currentMonthStart)
       const lastRows    = rows.filter(tx => tx.date >= lastMonthStart && tx.date <= lastMonthEnd)
@@ -212,6 +223,8 @@ export default function DashboardPage() {
             topCategory={topCategory}
             transactionCount={transactionCount}
             loading={loading}
+            currentMonthLabel={currentMonthLabel}
+            lastMonthLabel={lastMonthLabel}
           />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
@@ -222,7 +235,7 @@ export default function DashboardPage() {
             </div>
             {/* Right column: category donut + compact transactions */}
             <div className="lg:col-span-2 flex flex-col gap-4">
-              <CategoryDonut data={categoryData} total={totalCategorySpend} loading={loading} />
+              <CategoryDonut data={categoryData} total={totalCategorySpend} loading={loading} monthLabel={currentMonthLabel} />
               <RecentTransactions transactions={recentTx} loading={loading} />
             </div>
           </div>
