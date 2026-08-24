@@ -97,11 +97,3 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
-
-create table user_category_overrides (
-  user_id             uuid not null,
-  cleaned_description text not null,
-  category            text not null,
-  primary key (user_id, cleaned_description)
-);
