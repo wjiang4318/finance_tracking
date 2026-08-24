@@ -1,9 +1,8 @@
 """
-Groq-based transaction categorizer with Supabase cache.
+Claude-based transaction categorizer with Supabase cache.
 
 Usage:
     from pipeline.categorizer import categorize_dataframe
-
     df = categorize_dataframe(df)   # adds/updates a "category" column
 """
 
@@ -14,7 +13,7 @@ import logging
 
 import pandas as pd
 from dotenv import load_dotenv
-from groq import Groq
+import anthropic
 
 from database.connector import (
     get_cached_categories_bulk,
@@ -43,7 +42,7 @@ CATEGORIES = [
 ]
 
 _SYSTEM_PROMPT = f"""You are a transaction categorizer. Given a numbered list of transaction descriptions, respond with the number and category for each, one per line, in the format "N. Category". Use only categories from this list:
-{chr(10).join(f"- {c}" for c in CATEGORIES)}
+{chr(10).join(f"- {category}" for category in CATEGORIES)}
 
 Rules (apply in priority order — first matching rule wins):
 
@@ -138,42 +137,41 @@ def _apply_local_rules(desc: str) -> str | None:
     return None
 
 
-_groq_client: Groq | None = None
+_anthropic_client: anthropic.Anthropic | None = None
 
-def _get_client() -> Groq:
-    global _groq_client
-    if _groq_client is None:
-        _groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
-    return _groq_client
+def _get_client() -> anthropic.Anthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    return _anthropic_client
 
 
 def _normalize(result: str) -> str:
-    for cat in CATEGORIES:
-        if cat.lower() in result.lower():
-            return cat
-    logger.warning("Unrecognized category from Groq: %r — defaulting to 'Uncategorized'", result)
+    for category in CATEGORIES:
+        if category.lower() in result.lower():
+            return category
+    logger.warning("Unrecognized category from Claude: %r — defaulting to 'Uncategorized'", result)
     return "Uncategorized"
 
 
-def _batch_categorize(descriptions: list[str], client: Groq) -> list[str]:
+def _batch_categorize(descriptions: list[str], client: anthropic.Anthropic) -> list[str]:
     """Send all descriptions in one API call and return a category per description."""
     user_message = "\n".join(f"{i+1}. {desc}" for i, desc in enumerate(descriptions))
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": user_message},
-            ],
+        response = client.messages.create(
+            model="claude-haiku-4-5",
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
             temperature=0,
-            max_tokens=20 * len(descriptions),
+            max_tokens=40 * len(descriptions),
         )
-    except Exception as exc:
-        logger.error("Groq API call failed (%s) — defaulting %d items to 'Personal'", exc, len(descriptions))
+    except anthropic.APIError as exc:
+        logger.error("Claude API call failed (%s) — defaulting %d items to 'Uncategorized'", exc, len(descriptions))
         return ["Uncategorized"] * len(descriptions)
 
-    raw_lines = response.choices[0].message.content.strip().splitlines()
+    raw_text = "".join(block.text for block in response.content if block.type == "text")
+    raw_lines = raw_text.strip().splitlines()
 
     # Parse "N. Category" lines into a dict keyed by index
     parsed: dict[int, str] = {}
@@ -182,20 +180,20 @@ def _batch_categorize(descriptions: list[str], client: Groq) -> list[str]:
         if not line:
             continue
         if ". " in line:
-            num_part, cat_part = line.split(". ", 1)
+            num_part, category_text = line.split(". ", 1)
             if num_part.isdigit():
-                parsed[int(num_part)] = _normalize(cat_part.strip())
+                parsed[int(num_part)] = _normalize(category_text.strip())
 
     # Build results in order; fill any missing index with "Personal"
     missing = [i for i in range(1, len(descriptions) + 1) if i not in parsed]
     if missing:
         logger.warning(
-            "Batch response missing %d/%d categories (indices: %s); defaulting to 'Personal'",
+            "Batch response missing %d/%d categories (indices: %s); defaulting to 'Uncategorized'",
             len(missing), len(descriptions), missing,
         )
     results = [parsed.get(i, "Uncategorized") for i in range(1, len(descriptions) + 1)]
-    for i, (desc, cat) in enumerate(zip(descriptions, results), 1):
-        logger.info("  %d. %s --> %s", i, desc, cat)
+    for i, (desc, category) in enumerate(zip(descriptions, results), 1):
+        logger.info("  %d. %s --> %s", i, desc, category)
     return results
 
 
@@ -206,7 +204,7 @@ def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.Dat
     1. Apply deterministic local rules (CC payments, etc.) — no API needed.
     2. User-specific overrides from user_category_overrides table (1 query, if user_id given).
     3. Bulk shared cache lookup for remaining descriptions (1 Supabase query).
-    4. Batch Groq API call for anything still uncached.
+    4. Batch Claude API call for anything still uncached.
     5. Merge all results back in original order.
     """
     start_time = time.time()
@@ -216,10 +214,10 @@ def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.Dat
 
     # --- Step 1: deterministic local rules (no cache/API needed) ---
     pre_assigned: dict[int, str] = {}
-    for i, c in enumerate(cleaned):
-        cat = _apply_local_rules(c)
-        if cat is not None:
-            pre_assigned[i] = cat
+    for i, cleaned_desc in enumerate(cleaned):
+        matched_category = _apply_local_rules(cleaned_desc)
+        if matched_category is not None:
+            pre_assigned[i] = matched_category
 
     needs_lookup_indices = [i for i in range(len(cleaned)) if i not in pre_assigned]
     unique_for_lookup = list(dict.fromkeys(cleaned[i] for i in needs_lookup_indices))
@@ -253,15 +251,13 @@ def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.Dat
                 chunks = [uncached_descs[i:i+chunk_size] for i in range(0, len(uncached_descs), chunk_size)]
                 logger.info("%d descriptions → %d API call(s)", len(uncached_descs), len(chunks))
 
-                new_categories = []
                 for i, chunk in enumerate(chunks, 1):
                     batch = _batch_categorize(chunk, client)
-                    new_categories.extend(batch)
                     new_mappings = dict(zip(chunk, batch))
                     cache_results.update(new_mappings)
                     cache_categories_bulk(new_mappings)
                     logger.info("Cached batch %d/%d", i, len(chunks))
-                logger.info("Added %d new descriptions to cache", len(new_categories))
+                logger.info("Added %d new descriptions to cache", len(uncached_descs))
         else:
             logger.info(
                 "%d transactions → all resolved by local rules + user overrides",
