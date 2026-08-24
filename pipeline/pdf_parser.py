@@ -275,6 +275,10 @@ _CC_PAYMENT_FILTER = re.compile(
     re.I,
 )
 
+# Looser than _TRANSACTION_ROW — flags lines with a date + decimal amount that still
+# failed to parse, so a parsing gap logs a warning instead of silently vanishing.
+_LOOKS_LIKE_TRANSACTION_RE = re.compile(rf'(?:{_DATE_PATTERN}).*?\d+\.\d{{2}}\b', re.I)
+
 
 def extract_transactions(bank_text: str) -> pd.DataFrame:
     """Parse transaction rows from extracted PDF text into a DataFrame."""
@@ -315,6 +319,8 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
                 "amount1":     amount1_num,
                 "amount2":     amount2_num,
             })
+        elif _LOOKS_LIKE_TRANSACTION_RE.search(line):
+            logger.warning("Line looked like a transaction but failed to parse: %r", line)
 
     return pd.DataFrame(transactions)
 
