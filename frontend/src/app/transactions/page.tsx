@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { API_URL } from '@/utils/api'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
 import { Plus, Search, X, Trash2, FileX } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
@@ -182,7 +183,7 @@ export default function TransactionsPage() {
     formData.append('user_id', session.user.id)
 
     try {
-      const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData })
+      const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Server error ${res.status}`)
@@ -218,7 +219,7 @@ export default function TransactionsPage() {
       form.append('user_id', userId)
       form.append('description', editTx.description)
       form.append('category', editCategory)
-      await fetch('http://localhost:8000/set-override', { method: 'POST', body: form })
+      await fetch(`${API_URL}/set-override`, { method: 'POST', body: form })
 
       setAllTx(prev => prev.map(t =>
         t.description === editTx.description

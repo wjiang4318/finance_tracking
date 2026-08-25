@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { API_URL } from '@/utils/api'
 import Sidebar from '@/components/Sidebar'
 import StatCards from '@/components/dashboard/StatCards'
 import SpendingChart from '@/components/dashboard/SpendingChart'
@@ -169,7 +170,7 @@ export default function DashboardPage() {
     formData.append('user_id', session.user.id)
 
     try {
-      const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData })
+      const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Server error ${res.status}`)

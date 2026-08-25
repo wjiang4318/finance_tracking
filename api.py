@@ -10,9 +10,14 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 app = FastAPI()
 
+# FRONTEND_URL is the deployed Vercel URL in production; local dev always stays allowed.
+_allowed_origins = ["http://localhost:3000"]
+if frontend_url := os.environ.get("FRONTEND_URL"):
+    _allowed_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # local dev frontend only
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

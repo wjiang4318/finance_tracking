@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, ArrowUpFromLine, List, TrendingUp, LogOut } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
+import { API_URL } from '@/utils/api'
 
 const NAV = [
   { label: 'Dashboard',    href: '/dashboard',   icon: LayoutDashboard },
@@ -47,7 +48,7 @@ export default function Sidebar({ onUpload }: SidebarProps) {
     formData.append('user_id', session.user.id)
 
     try {
-      const res = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData })
+      const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Server error ${res.status}`)
