@@ -1,5 +1,6 @@
 'use client'
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, ArrowUpFromLine, List, TrendingUp, LogOut } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
@@ -142,13 +143,15 @@ export default function Sidebar({ onUpload }: SidebarProps) {
         onChange={handleFileSelected}
       />
 
-      {/* Upload overlay for non-dashboard pages */}
-      {uploading && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
+      {/* Upload overlay for non-dashboard pages — portaled to <body> so it always
+          paints above page content (e.g. Recharts SVG), regardless of DOM nesting */}
+      {uploading && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-[#f4f4fb]">
           <img src="/uploading.gif" alt="Uploading…" className="w-64 h-64 object-contain drop-shadow-lg" />
           <p className="mt-4 text-base font-semibold text-gray-700">Crunching your statement…</p>
           <p className="text-sm text-gray-400 mt-1">This takes about 10–15 seconds ✨</p>
-        </div>
+        </div>,
+        document.body
       )}
     </aside>
   )

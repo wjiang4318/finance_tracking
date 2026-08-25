@@ -184,7 +184,7 @@ def _batch_categorize(descriptions: list[str], client: anthropic.Anthropic) -> l
             if num_part.isdigit():
                 parsed[int(num_part)] = _normalize(category_text.strip())
 
-    # Build results in order; fill any missing index with "Personal"
+    # Build results in order; fill any missing index with "Uncategorized"
     missing = [i for i in range(1, len(descriptions) + 1) if i not in parsed]
     if missing:
         logger.warning(

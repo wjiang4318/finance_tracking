@@ -10,7 +10,6 @@ import hashlib
 import logging
 import os
 from datetime import date
-from typing import Optional
 
 import pandas as pd
 
@@ -31,7 +30,6 @@ logger = logging.getLogger(__name__)
 def upload_transactions(
     pdf_path: str,
     user_id: str,
-    df: Optional[pd.DataFrame] = None,
     skip_if_exists: bool = True,
     storage_path: str = "",
 ) -> dict:
@@ -42,8 +40,6 @@ def upload_transactions(
     ----------
     pdf_path        : Path to the PDF file
     user_id         : Supabase auth UUID of the owning user
-    df              : Optional pre-categorized transactions DataFrame; if omitted,
-                    the PDF is parsed and transactions are auto-categorized
     skip_if_exists  : Skip upload if this file hash was already processed
     storage_path    : Optional Supabase Storage path if you uploaded the PDF
 
@@ -52,9 +48,7 @@ def upload_transactions(
     dict with keys: statement_id, account_id, account_name, inserted, skipped
     """
     parsed = parse_pdf(pdf_path)
-
-    if df is None:
-        df = categorize_dataframe(parsed["transactions"], user_id=user_id)
+    df = categorize_dataframe(parsed["transactions"], user_id=user_id)
 
     pdf_hash     = hashlib.sha256(open(pdf_path, "rb").read()).hexdigest()
     pdf_filename = os.path.basename(pdf_path)
