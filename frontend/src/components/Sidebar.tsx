@@ -89,10 +89,10 @@ export default function Sidebar({ onUpload }: SidebarProps) {
               className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left ${
                 active
                   ? 'bg-white shadow-sm text-gray-900 font-medium'
-                  : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
+                  : 'text-gray-700 hover:bg-white/70 hover:text-gray-900'
               }`}
             >
-              <Icon size={15} className={active ? 'text-indigo-500' : 'text-gray-400'} />
+              <Icon size={15} className={active ? 'text-indigo-500' : 'text-gray-500'} />
               <span>{label}</span>
             </button>
           )

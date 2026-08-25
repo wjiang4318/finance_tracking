@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
-import { Plus, Search, X, Trash2 } from 'lucide-react'
+import { Plus, Search, X, Trash2, FileX } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import PageBanner from '@/components/PageBanner'
 import { motion } from 'framer-motion'
@@ -35,6 +35,15 @@ type AddForm = {
   category: string
   type: 'debit' | 'credit'
   account_name: string
+}
+
+type StatementRow = {
+  id: string
+  filename: string
+  account_name: string
+  period_start: string | null
+  period_end: string | null
+  txCount: number
 }
 
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200'
@@ -80,6 +89,12 @@ export default function TransactionsPage() {
   const [adding, setAdding]     = useState(false)
   const [addError, setAddError] = useState('')
 
+  // manage statements modal
+  const [showManageStatements, setShowManageStatements] = useState(false)
+  const [statements, setStatements] = useState<StatementRow[]>([])
+  const [confirmDeleteStmtId, setConfirmDeleteStmtId] = useState<string | null>(null)
+  const [deletingStmt, setDeletingStmt] = useState(false)
+
   useEffect(() => {
     async function fetchData() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -89,7 +104,7 @@ export default function TransactionsPage() {
       setUserId(uid)
 
       const [{ data: stmts }, { data: accts }] = await Promise.all([
-        supabase.from('statements').select('statements_id, account_id').eq('user_id', uid),
+        supabase.from('statements').select('statements_id, account_id, filename, period_start, period_end').eq('user_id', uid),
         supabase.from('accounts').select('bank_acc_id, account_name').eq('user_id', uid),
       ])
 
@@ -121,6 +136,16 @@ export default function TransactionsPage() {
       setAllTx(enriched)
       setAccounts(uniqueAccounts)
       setAcctStmtMap(acctStmt)
+
+      const stmtRows: StatementRow[] = (stmts ?? []).map(s => ({
+        id: s.statements_id,
+        filename: s.filename,
+        account_name: acctMap[s.account_id] ?? 'Unknown',
+        period_start: s.period_start,
+        period_end: s.period_end,
+        txCount: enriched.filter(t => t.statement_id === s.statements_id).length,
+      }))
+      setStatements(stmtRows)
       // Pre-select first account in the add form
       if (uniqueAccounts[0]) {
         setAddForm(f => ({ ...f, account_name: uniqueAccounts[0] }))
@@ -222,6 +247,20 @@ export default function TransactionsPage() {
     setEditTx(null)
   }
 
+  async function handleDeleteStatement(id: string) {
+    setDeletingStmt(true)
+    // Deleting the statement cascades to every transaction tied to it (schema:
+    // transactions.statement_id references statements on delete cascade) — no
+    // separate transactions delete needed.
+    const { error } = await supabase.from('statements').delete().eq('statements_id', id)
+    if (!error) {
+      setStatements(prev => prev.filter(s => s.id !== id))
+      setAllTx(prev => prev.filter(t => t.statement_id !== id))
+    }
+    setDeletingStmt(false)
+    setConfirmDeleteStmtId(null)
+  }
+
   async function handleAddTransaction() {
     if (!addForm.description || !addForm.amount || !addForm.date) return
     setAdding(true)
@@ -270,12 +309,20 @@ export default function TransactionsPage() {
         eyebrow="Finance Tracker"
         title="Transactions"
         right={
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 text-sm bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white border border-white/30 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <Plus size={14} /> Add Transaction
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowManageStatements(true)}
+              className="flex items-center gap-1.5 text-sm bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white border border-white/30 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <FileX size={14} /> Manage Statements
+            </button>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-1.5 text-sm bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white border border-white/30 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <Plus size={14} /> Add Transaction
+            </button>
+          </div>
         }
       />
       <div className="flex">
@@ -551,6 +598,74 @@ export default function TransactionsPage() {
                 {adding ? 'Adding…' : 'Add Transaction'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Manage Statements Modal ── */}
+      {showManageStatements && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => { setShowManageStatements(false); setConfirmDeleteStmtId(null) }}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Manage Statements</h2>
+            <p className="text-xs text-gray-400 mb-4">Deleting a statement removes all of its transactions too.</p>
+
+            {statements.length === 0 ? (
+              <p className="text-sm text-gray-500 py-8 text-center">No statements uploaded yet</p>
+            ) : (
+              <div className="border border-gray-100 rounded-xl max-h-96 overflow-y-auto">
+                {statements.map(s => (
+                  <div key={s.id} className="flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-b-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{s.filename}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {s.account_name}
+                        {s.period_start && s.period_end && (
+                          <> · {new Date(s.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {' – '}
+                            {new Date(s.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</>
+                        )}
+                        {' · '}{s.txCount} transaction{s.txCount !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    {confirmDeleteStmtId === s.id ? (
+                      <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                        <button
+                          onClick={() => setConfirmDeleteStmtId(null)}
+                          className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStatement(s.id)}
+                          disabled={deletingStmt}
+                          className="text-xs bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-lg px-2.5 py-1.5 transition-colors"
+                        >
+                          {deletingStmt ? 'Deleting…' : 'Confirm'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteStmtId(s.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0 ml-3"
+                        title="Delete statement and its transactions"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={() => { setShowManageStatements(false); setConfirmDeleteStmtId(null) }}
+              className="w-full mt-4 text-sm border border-gray-200 rounded-lg py-2 text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
