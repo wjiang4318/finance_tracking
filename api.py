@@ -2,7 +2,8 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 import tempfile, os, logging
-from database.connector import upload_transactions, upsert_user_category_override
+from main import upload_transactions
+from database.connector import upsert_user_category_override
 from pipeline.categorizer import _clean_description
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

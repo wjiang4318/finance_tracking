@@ -1,10 +1,8 @@
-import hashlib
 import logging
 import os
 from datetime import date, datetime
 from typing import Optional
 
-import pandas as pd
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
@@ -18,7 +16,7 @@ load_dotenv()
 
 _client: Client | None = None
 
-def _get_client() -> Client:
+def get_client() -> Client:
     global _client
     if _client is None:
         _client = create_client(
@@ -35,7 +33,7 @@ def _get_client() -> Client:
 _DATE_FORMATS = ["%b %d", "%B %d", "%m/%d", "%m/%d/%Y", "%m/%d/%y"]
 
 
-def _parse_date(date_str: str, year: int, reference_end: Optional[date] = None) -> Optional[date]:
+def parse_date(date_str: str, year: int, reference_end: Optional[date] = None) -> Optional[date]:
     """
     Parse 'Oct 3' or '10/3' style strings into a date with the given year.
     If the result lands after reference_end (statement period end), the transaction
@@ -60,7 +58,7 @@ def _parse_date(date_str: str, year: int, reference_end: Optional[date] = None) 
 # Amount / type helpers
 # ---------------------------------------------------------------------------
 
-def _to_type(amount: float) -> str:
+def to_type(amount: float) -> str:
     """Negative amounts are credits (payments/refunds); positive are debits (purchases)."""
     return "credit" if amount < 0 else "debit"
 
@@ -69,7 +67,7 @@ def _to_type(amount: float) -> str:
 # Account / statement helpers
 # ---------------------------------------------------------------------------
 
-def _get_or_create_account(
+def get_or_create_account(
     client: Client,
     user_id: str,
     account_name: str,
@@ -77,22 +75,9 @@ def _get_or_create_account(
     last_four: Optional[str] = None,
 ) -> str:
     """Return the UUID of the account, creating it if it doesn't exist."""
-    if last_four:
-        res = (
-            client.table("accounts")
-            .select("bank_acc_id")
-            .eq("user_id", user_id)
-            .eq("last_four", last_four)
-            .execute()
-        )
-    else:
-        res = (
-            client.table("accounts")
-            .select("bank_acc_id")
-            .eq("user_id", user_id)
-            .eq("account_name", account_name)
-            .execute()
-        )
+    query = client.table("accounts").select("bank_acc_id").eq("user_id", user_id)
+    query = query.eq("last_four", last_four) if last_four else query.eq("account_name", account_name)
+    res = query.execute()
 
     if res.data:
         acc_id = res.data[0]["bank_acc_id"]
@@ -110,7 +95,7 @@ def _get_or_create_account(
     return acc_id
 
 
-def _create_statement(
+def create_statement(
     client: Client,
     user_id: str,
     account_id: str,
@@ -133,7 +118,7 @@ def _create_statement(
     return res.data[0]["statements_id"]
 
 
-def _statement_exists(client: Client, file_hash: str) -> Optional[str]:
+def statement_exists(client: Client, file_hash: str) -> Optional[str]:
     """Return statement UUID if this file content was already uploaded, else None."""
     res = (
         client.table("statements")
@@ -152,7 +137,7 @@ def get_cached_categories_bulk(descriptions: list[str]) -> dict[str, str]:
     """Single query to fetch all cached categories for a list of descriptions."""
     if not descriptions:
         return {}
-    client = _get_client()
+    client = get_client()
     res = (
         client.table("merchant_categories")
         .select("description, category")
@@ -162,12 +147,11 @@ def get_cached_categories_bulk(descriptions: list[str]) -> dict[str, str]:
     return {row["description"]: row["category"] for row in res.data}
 
 
-
 def cache_categories_bulk(items: dict[str, str]) -> None:
     """Save multiple description → category mappings in a single upsert."""
     if not items:
         return
-    _get_client().table("merchant_categories").upsert([
+    get_client().table("merchant_categories").upsert([
         {"description": desc, "category": cat}
         for desc, cat in items.items()
     ]).execute()
@@ -178,7 +162,7 @@ def get_user_category_overrides_bulk(user_id: str, descriptions: list[str]) -> d
     if not descriptions or not user_id:
         return {}
     res = (
-        _get_client().table("user_category_overrides")
+        get_client().table("user_category_overrides")
         .select("cleaned_description, category")
         .eq("user_id", user_id)
         .in_("cleaned_description", descriptions)
@@ -189,110 +173,8 @@ def get_user_category_overrides_bulk(user_id: str, descriptions: list[str]) -> d
 
 def upsert_user_category_override(user_id: str, cleaned_description: str, category: str) -> None:
     """Save or update a user's permanent category preference for a merchant."""
-    _get_client().table("user_category_overrides").upsert({
+    get_client().table("user_category_overrides").upsert({
         "user_id": user_id,
         "cleaned_description": cleaned_description,
         "category": category,
     }).execute()
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-def upload_transactions(
-    pdf_path: str,
-    user_id: str,
-    df: Optional[pd.DataFrame] = None,
-    skip_if_exists: bool = True,
-    storage_path: str = "",
-) -> dict:
-    """
-    Parse, categorize, and upload a bank PDF statement to Supabase.
-
-    Parameters
-    ----------
-    pdf_path        : Path to the PDF file
-    user_id         : Supabase auth UUID of the owning user
-    df              : Optional pre-categorized transactions DataFrame; if omitted,
-                      the PDF is parsed and transactions are auto-categorized
-    skip_if_exists  : Skip upload if this file hash was already processed
-    storage_path    : Optional Supabase Storage path if you uploaded the PDF
-
-    Returns
-    -------
-    dict with keys: statement_id, account_id, inserted, skipped
-    """
-    # Lazy imports to avoid circular dependency (categorizer imports connector)
-    from pipeline.pdf_parser import parse_pdf
-    from pipeline.categorizer import categorize_dataframe
-
-    parsed = parse_pdf(pdf_path)
-
-    if df is None:
-        df = categorize_dataframe(parsed["transactions"], user_id=user_id)
-
-    pdf_hash     = hashlib.sha256(open(pdf_path, "rb").read()).hexdigest()
-    pdf_filename = os.path.basename(pdf_path)
-    account_name = f"{parsed['card_name']} ****{parsed['last_four']}"
-    account_type = parsed["account_type"] or "credit"
-    last_four    = parsed["last_four"]
-    period_start = date.fromisoformat(parsed["period_start"]) if parsed["period_start"] else None
-    period_end   = date.fromisoformat(parsed["period_end"])   if parsed["period_end"]   else None
-    reference_end = period_end or period_start or date.today()
-    year          = reference_end.year
-
-    logger.info("Account: %s | Period: %s → %s", account_name, period_start, period_end)
-
-    client = _get_client()
-
-    account_id = _get_or_create_account(
-        client, user_id, account_name, account_type, last_four
-    )
-
-    if skip_if_exists:
-        existing_id = _statement_exists(client, pdf_hash)
-        if existing_id:
-            logger.info("Already uploaded (statement %s), skipping.", existing_id)
-            return {
-                "statement_id": existing_id,
-                "account_id": account_id,
-                "account_name": account_name,
-                "inserted": 0,
-                "skipped": True,
-            }
-
-    statement_id = _create_statement(
-        client, user_id, account_id, pdf_filename, pdf_hash, storage_path, period_start, period_end
-    )
-
-    rows = []
-    for row in df.to_dict("records"):
-        trans_date = _parse_date(row.get("trans_date"), year, reference_end)
-        if trans_date is None:
-            continue
-
-        amount_raw = float(row["amount1"])
-        category = row.get("category")
-
-        rows.append({
-            "statement_id": statement_id,
-            "user_id": user_id,
-            "date": trans_date.isoformat(),
-            "description": str(row["description"]).strip(),
-            "amount": abs(amount_raw),
-            "type": _to_type(amount_raw),
-            "category": category if pd.notna(category) and category != "" else None,
-        })
-
-    if rows:
-        client.table("transactions").insert(rows).execute()
-
-    logger.info("Inserted %d transactions into statement %s", len(rows), statement_id)
-    return {
-        "statement_id": statement_id,
-        "account_id": account_id,
-        "account_name": account_name,
-        "inserted": len(rows),
-        "skipped": False,
-    }

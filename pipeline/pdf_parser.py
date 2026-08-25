@@ -275,6 +275,15 @@ _CC_PAYMENT_FILTER = re.compile(
     re.I,
 )
 
+# Balance snapshots printed as rows inside the transaction table (Marcus: "BeginningBalance
+# $7,666.01", "EndingBalance $160.06") — not real money movements, just the account balance
+# at the edges of the statement period. Structurally identical to a real one-amount
+# transaction row, so the description text is the only thing that tells them apart.
+_BALANCE_SNAPSHOT_FILTER = re.compile(
+    r'^(?:beginning|ending|previous|opening|closing)\s*balance$',
+    re.I,
+)
+
 # Looser than _TRANSACTION_ROW — flags lines with a date + decimal amount that still
 # failed to parse, so a parsing gap logs a warning instead of silently vanishing.
 _LOOKS_LIKE_TRANSACTION_RE = re.compile(rf'(?:{_DATE_PATTERN}).*?\d+\.\d{{2}}\b', re.I)
@@ -303,6 +312,9 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
             description = description.strip()
 
             if _CC_PAYMENT_FILTER.search(description):
+                continue
+
+            if _BALANCE_SNAPSHOT_FILTER.match(description):
                 continue
 
             amount1_num = float(amount1.replace("$", "").replace(",", ""))
