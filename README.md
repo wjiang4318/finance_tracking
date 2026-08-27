@@ -4,6 +4,8 @@ A personal expense tracker that ingests bank and credit card PDF statements, cat
 
 **[Try it out here!](https://finance-tracking-nine-mu.vercel.app)**
 
+https://github.com/user-attachments/assets/65fc8fb4-f614-4c3e-a01e-841bf85078dc
+
 <p align="center">
   <img src="docs/dashboard.png" alt="Dashboard" width="800">
 </p>
