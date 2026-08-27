@@ -8,3 +8,6 @@ claude.md
 .venv/
 # Removed code kept for local reference only — never pushed
 _archive/
+
+# Claude Code tooling (third-party skills, local config) — not part of the app
+.claude/
