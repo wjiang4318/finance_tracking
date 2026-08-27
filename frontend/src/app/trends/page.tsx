@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import Sidebar from '@/components/Sidebar'
 import PageBanner from '@/components/PageBanner'
-import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
+import CategoryDonut, { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
+import { sumSpend } from '@/utils/spend'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -33,9 +34,8 @@ const SPEND_CATEGORIES = [
   'Uncategorized',
 ]
 
-const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
 
-type TxRow = { date: string; amount: number; category: string }
+type TxRow = { date: string; amount: number; category: string; type?: string }
 
 type MonthSummary = {
   month: string
@@ -49,10 +49,18 @@ type MonthSummary = {
 function spendForPeriod(txs: TxRow[], year: number, monthIndices: number[]): number {
   return monthIndices.reduce((total, mi) => {
     const key = `${year}-${String(mi + 1).padStart(2, '0')}`
-    return total + txs
-      .filter(tx => tx.date.startsWith(key) && !TRANSFERS.includes(tx.category) && tx.amount > 0)
-      .reduce((s, tx) => s + tx.amount, 0)
+    return total + sumSpend(txs.filter(tx => tx.date.startsWith(key)))
   }, 0)
+}
+
+// Month-card grid columns, keyed by how many months the period actually has, so a
+// 3-month quarter stretches full width instead of leaving a 4th empty column.
+// Static class strings (not interpolated) so Tailwind's JIT scanner picks them up.
+const MONTH_GRID_COLS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
 }
 
 function fmt(n: number) {
@@ -75,7 +83,7 @@ export default function TrendsPage() {
 
       const { data: rows } = await supabase
         .from('transactions')
-        .select('date, amount, category')
+        .select('date, amount, category, type')
         .eq('user_id', session.user.id)
         .order('date', { ascending: true })
 
@@ -94,22 +102,19 @@ export default function TrendsPage() {
       const key = `${year}-${String(mi + 1).padStart(2, '0')}`
       const txs = allTx.filter(tx => tx.date.startsWith(key))
 
-      const expenses = txs.filter(tx => !TRANSFERS.includes(tx.category) && tx.amount > 0)
-                          .reduce((s, tx) => s + tx.amount, 0)
+      const expenses = sumSpend(txs)
 
-      // Per-category spend amounts (debits only)
+      // Per-category net spend, clamped at 0 since a stacked bar can't render a negative
       const cats: Record<string, number> = {}
       for (const cat of SPEND_CATEGORIES) {
-        cats[cat] = Math.round(
-          txs.filter(tx => tx.category === cat && tx.amount > 0)
-             .reduce((s, tx) => s + tx.amount, 0) * 100
-        ) / 100
+        const net = sumSpend(txs.filter(tx => tx.category === cat))
+        cats[cat] = Math.max(0, net)
       }
 
       return {
         month:      MONTH_LABELS[mi],
         monthIndex: mi,
-        expenses:   Math.round(expenses * 100) / 100,
+        expenses,
         ...cats,
       }
     })
@@ -128,6 +133,15 @@ export default function TrendsPage() {
   })).sort((a, b) => b.total - a.total)
   const topCategory = categoryTotals[0]?.total > 0 ? categoryTotals[0].cat : '—'
 
+  // Same category totals, reshaped for the donut — a stacked bar is good at showing
+  // trend over time but bad at comparing segment sizes once you're past the baseline
+  // (thin slivers near the top are hard to size up against a dominant one below them).
+  // The donut answers "what dominated this period" directly instead.
+  const donutData = categoryTotals
+    .filter(c => c.total > 0)
+    .map(c => ({ name: c.cat, value: Math.round(c.total * 100) / 100 }))
+  const periodLabel = quarter === 'All' ? `${year}` : `${quarter} ${year}`
+
   // Same months, one year earlier — for a year-over-year comparison that isn't skewed
   // by comparing a partial current year against a full prior year.
   const includedMonthIndices = monthData.map(m => m.monthIndex)
@@ -142,6 +156,8 @@ export default function TrendsPage() {
   availableYears.sort((a, b) => b - a)
 
   const isEmpty = !loading && monthData.every(m => m.expenses === 0)
+
+  const monthColsClass = MONTH_GRID_COLS[Math.min(Math.max(monthData.length, 1), 4)]
 
   return (
     <div className="min-h-screen bg-[#f4f4fb]">
@@ -202,7 +218,8 @@ export default function TrendsPage() {
             </div>
           </div>
 
-          {/* Spend by category, stacked */}
+          {/* Left: spend trend over time. Right: this period's category breakdown. */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Monthly</p>
             <p className="text-sm font-semibold text-gray-900 mb-5">Where It Went</p>
@@ -244,9 +261,8 @@ export default function TrendsPage() {
                   />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 16 }} />
 
-                  {/* Spend categories stacked into a single bar per month — transfer
-                      categories (Income/Investment/Internal Transfers/Credit Card Payment)
-                      are excluded entirely, so this bar's height always matches Total Spending. */}
+                  {/* Spend categories stacked into one bar per month, so the bar's height
+                      matches Total Spending. */}
                   {activeCats.map((cat, i) => (
                     <Bar
                       key={cat}
@@ -263,17 +279,20 @@ export default function TrendsPage() {
             )}
           </div>
 
+          <CategoryDonut data={donutData} total={totalExpenses} loading={loading} monthLabel={periodLabel} />
+          </div>
+
           {/* Month-by-month cards */}
           <div>
             <p className="text-sm font-semibold text-gray-700 mb-3">Month by month</p>
             {loading ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${monthColsClass}`}>
                 {monthIndices.slice(0, 4).map(i => (
                   <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse h-28" />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${monthColsClass}`}>
                 {monthData.map(m => (
                   <div key={m.month} className="bg-white rounded-xl border border-gray-100 p-4">
                     <p className="text-sm font-semibold text-gray-800 mb-2">{m.month} {year}</p>

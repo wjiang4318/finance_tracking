@@ -259,21 +259,16 @@ _TRANSACTION_ROW = re.compile(
     re.I,
 )
 
-# Detects "payments … credits" section headers for amount-negation only (not for filtering).
-_NEGATIVE_SECTION_RE = re.compile(
-    r'\bpayments?\b.*\bcredits?\b|\bcredits?\b.*\bpayments?\b',
-    re.I,
-)
-
-# Applied globally to every parsed row — these phrases never appear in real merchant names.
-# Filters CC payment confirmations regardless of which PDF section they came from. (A checking/
-# savings statement's outgoing payment to a card may use different wording than this and slip
-# through uncaught — see categorizer.py's last-4 cross-reference for the complementary catch.)
+# Credit card payment confirmations — dropped at parse time, since paying a card off is a
+# transfer rather than spending. Applied to every row; these phrases never appear in real
+# merchant names. A checking-side payment to a card is worded differently and is caught
+# instead by the last-4 cross-reference in categorizer.py.
 _CC_PAYMENT_FILTER = re.compile(
-    r'payment\s+thank\s+you'    # Chase:        "Payment Thank You-Mobile"
-    r'|electronic\s+payment'    # BofA:         "BA ELECTRONIC PAYMENT"
-    r'|\bpymt\b'                # Capital One:  "CAPITAL ONE AUTOPAY PYMT"
-    r'|\bautopay\b',            # Capital One / others: "AUTOPAY"
+    r'payment\s*[-–—]?\s*thank\s+you'  # Chase: "Payment Thank You-Mobile", "AUTOMATIC PAYMENT - THANK YOU"
+    r'|electronic\s+payment'           # BofA:         "BA ELECTRONIC PAYMENT"
+    r'|automatic\s+payment'            # Chase/others: "AUTOMATIC PAYMENT"
+    r'|\bpymt\b'                       # Capital One:  "CAPITAL ONE AUTOPAY PYMT"
+    r'|\bautopay\b',                   # Capital One / others: "AUTOPAY"
     re.I,
 )
 
@@ -292,20 +287,17 @@ _LOOKS_LIKE_TRANSACTION_RE = re.compile(rf'(?:{_DATE_PATTERN}).*?\d+\.\d{{2}}\b'
 
 
 def extract_transactions(bank_text: str) -> pd.DataFrame:
-    """Parse transaction rows from extracted PDF text into a DataFrame."""
+    """Parse transaction rows from extracted PDF text into a DataFrame.
+
+    Amount signs are taken verbatim from the statement, which prints an explicit minus on
+    credits. They are *statement-relative*: a purchase is positive on a credit card but
+    negative on a checking statement. `main.py` normalizes this per account type.
+    """
     transactions = []
-    is_negative_section = False
 
     for line in bank_text.splitlines():
         line = " ".join(line.split())
         if not line:
-            continue
-
-        if _NEGATIVE_SECTION_RE.search(line) and not _TRANSACTION_ROW.match(line):
-            is_negative_section = True
-            continue
-        elif "TRANSACTIONS" in line.upper() and not _TRANSACTION_ROW.match(line):
-            is_negative_section = False
             continue
 
         match = _TRANSACTION_ROW.match(line)
@@ -321,11 +313,6 @@ def extract_transactions(bank_text: str) -> pd.DataFrame:
 
             amount1_num = float(amount1.replace("$", "").replace(",", ""))
             amount2_num = float(amount2.replace("$", "").replace(",", "")) if amount2 else None
-
-            if is_negative_section:
-                amount1_num = -abs(amount1_num)
-                if amount2_num is not None:
-                    amount2_num = -abs(amount2_num)
 
             transactions.append({
                 "trans_date":  trans_date,

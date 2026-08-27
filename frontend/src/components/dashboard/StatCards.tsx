@@ -10,8 +10,6 @@ interface StatCardsProps {
   topCategory: string
   transactionCount: number
   loading: boolean
-  currentMonthLabel: string
-  lastMonthLabel: string
 }
 
 const cardVariants = {
@@ -29,7 +27,7 @@ function SkeletonCard() {
   )
 }
 
-export default function StatCards({ currentMonthSpend, lastMonthSpend, topCategory, transactionCount, loading, currentMonthLabel, lastMonthLabel }: StatCardsProps) {
+export default function StatCards({ currentMonthSpend, lastMonthSpend, topCategory, transactionCount, loading }: StatCardsProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

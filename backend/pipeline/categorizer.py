@@ -121,9 +121,10 @@ def _clean_description(desc: str) -> str:
 _LOCAL_RULES: list[tuple[re.Pattern, str]] = [
     (
         re.compile(
-            r'\b(autopay|pymt)\b'       # Capital One: "CAPITAL ONE AUTOPAY PYMT"
-            r'|electronic\s+payment'    # BofA:  "BA ELECTRONIC PAYMENT"
-            r'|payment\s+thank\s+you',  # Chase: "Payment Thank You-Mobile"
+            r'\b(autopay|pymt)\b'               # Capital One: "CAPITAL ONE AUTOPAY PYMT"
+            r'|electronic\s+payment'            # BofA:  "BA ELECTRONIC PAYMENT"
+            r'|automatic\s+payment'             # Chase/others: "AUTOMATIC PAYMENT"
+            r'|payment\s*[-–—]?\s*thank\s+you', # Chase: "Payment Thank You-Mobile", "AUTOMATIC PAYMENT - THANK YOU"
             re.I,
         ),
         "Credit Card Payment",
@@ -225,9 +226,8 @@ def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.Dat
 
     pre_assigned: dict[int, str] = {}
 
-    # --- Step 0: last-4 cross-reference, checked against the RAW description — cleaning
-    # strips trailing digit groups (_TRAILING_NUM_RE), which would eat the very last-4
-    # digits we're trying to match on ("...Transfer to Card 1333" -> "...Transfer to Card").
+    # --- Step 0: last-4 cross-reference. Matched against the RAW description because
+    # _clean_description strips trailing digit groups — the very digits being matched.
     if user_id:
         last_fours = get_user_credit_card_last_fours(user_id)
         last_four_pattern = _build_last_four_pattern(last_fours)

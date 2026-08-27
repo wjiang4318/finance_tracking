@@ -6,3 +6,5 @@ node_modules/
 notebooks/
 claude.md
 .venv/
+# Removed code kept for local reference only — never pushed
+_archive/

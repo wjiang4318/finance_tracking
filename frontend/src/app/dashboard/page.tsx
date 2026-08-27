@@ -4,12 +4,12 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { API_URL } from '@/utils/api'
+import { countsTowardSpend, spendAmount, sumSpend } from '@/utils/spend'
 import Sidebar from '@/components/Sidebar'
 import StatCards from '@/components/dashboard/StatCards'
 import SpendingChart from '@/components/dashboard/SpendingChart'
 import CategoryDonut from '@/components/dashboard/CategoryDonut'
 import RecentTransactions from '@/components/dashboard/RecentTransactions'
-import CategoryTrendChart from '@/components/dashboard/CategoryTrendChart'
 import PageBanner from '@/components/PageBanner'
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'duplicate' | 'error'
@@ -30,54 +30,24 @@ function buildMonthlySpend(rows: TxRow[]): { month: string; spend: number }[] {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
-    const spend = rows
-      .filter(tx => tx.date.startsWith(key) && !TRANSFERS.includes(tx.category) && tx.amount > 0)
-      .reduce((sum, tx) => sum + tx.amount, 0)
-    result.push({ month: MONTH_LABELS[d.getMonth()], spend: Math.round(spend * 100) / 100 })
+    result.push({
+      month: MONTH_LABELS[d.getMonth()],
+      spend: sumSpend(rows.filter(tx => tx.date.startsWith(key))),
+    })
   }
   return result
 }
 
-// Categories that can appear as real spend (mirrors OUTFLOW_CATEGORIES on the Trends page,
-// minus Investment/Internal Transfers/Credit Card Payment — those are transfers, not spend).
-const SPEND_CATEGORIES = [
-  'Food & Drink', 'Groceries', 'Shopping', 'Travel', 'Bills & Utilities',
-  'Entertainment', 'Health and Wellness', 'Uncategorized',
-]
-
-function buildCategoryTrend(rows: TxRow[]): { data: { month: string; [cat: string]: number | string }[]; categories: string[] } {
-  const now = new Date()
-  const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
-  const data: { month: string; [cat: string]: number | string }[] = []
-
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const monthRows = rows.filter(tx => tx.date.startsWith(key) && !TRANSFERS.includes(tx.category) && tx.amount > 0)
-
-    const row: { month: string; [cat: string]: number | string } = { month: MONTH_LABELS[d.getMonth()] }
-    for (const cat of SPEND_CATEGORIES) {
-      const total = monthRows.filter(tx => tx.category === cat).reduce((s, tx) => s + tx.amount, 0)
-      row[cat] = Math.round(total * 100) / 100
-    }
-    data.push(row)
-  }
-
-  // Only chart categories that actually had spend somewhere in the window
-  const categories = SPEND_CATEGORIES.filter(cat => data.some(row => (row[cat] as number) > 0))
-  return { data, categories }
-}
-
 function buildCategoryData(rows: TxRow[]): { name: string; value: number }[] {
   const map: Record<string, number> = {}
-  const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
   for (const tx of rows) {
-    if (TRANSFERS.includes(tx.category) || tx.amount <= 0) continue
-    map[tx.category] = (map[tx.category] ?? 0) + tx.amount
+    if (!countsTowardSpend(tx)) continue
+    map[tx.category] = (map[tx.category] ?? 0) + spendAmount(tx)
   }
   return Object.entries(map)
     .map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }))
+    // A pie can't draw a negative slice, so drop categories where refunds outweigh spend
+    .filter(d => d.value > 0)
     .sort((a, b) => b.value - a.value)
 }
 
@@ -96,10 +66,8 @@ export default function DashboardPage() {
   const [transactionCount, setTransactionCount]     = useState(0)
   const [monthlyData, setMonthlyData]               = useState<{ month: string; spend: number }[]>([])
   const [categoryData, setCategoryData]             = useState<{ name: string; value: number }[]>([])
-  const [categoryTrend, setCategoryTrend]           = useState<{ data: { month: string; [cat: string]: number | string }[]; categories: string[] }>({ data: [], categories: [] })
   const [recentTx, setRecentTx]                     = useState<TxRow[]>([])
   const [currentMonthLabel, setCurrentMonthLabel]   = useState('')
-  const [lastMonthLabel, setLastMonthLabel]         = useState('')
 
   useEffect(() => {
     async function fetchData() {
@@ -131,35 +99,27 @@ export default function DashboardPage() {
       const fmt = (y: number, m: number) =>
         new Date(y, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' })
       setCurrentMonthLabel(fmt(anchorYear, anchorMonth))
-      setLastMonthLabel(fmt(anchorYear, anchorMonth - 1))
 
       const currentRows = rows.filter(tx => tx.date >= currentMonthStart)
       const lastRows    = rows.filter(tx => tx.date >= lastMonthStart && tx.date <= lastMonthEnd)
 
-      const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
-      const isSpend = (tx: TxRow) => !TRANSFERS.includes(tx.category) && tx.amount > 0
-
-      const expenseSum = (txs: TxRow[]) =>
-        txs.filter(isSpend).reduce((s, tx) => s + tx.amount, 0)
-
-      const curSpend  = expenseSum(currentRows)
-      const lastSpend = expenseSum(lastRows)
-      const expCount  = currentRows.filter(isSpend).length
+      const curSpend  = sumSpend(currentRows)
+      const lastSpend = sumSpend(lastRows)
+      const expCount  = currentRows.filter(countsTowardSpend).length
 
       const catMap: Record<string, number> = {}
       for (const tx of currentRows) {
-        if (isSpend(tx))
-          catMap[tx.category] = (catMap[tx.category] ?? 0) + tx.amount
+        if (countsTowardSpend(tx))
+          catMap[tx.category] = (catMap[tx.category] ?? 0) + spendAmount(tx)
       }
       const topCat = Object.entries(catMap).sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
 
-      setCurrentMonthSpend(Math.round(curSpend * 100) / 100)
-      setLastMonthSpend(Math.round(lastSpend * 100) / 100)
+      setCurrentMonthSpend(curSpend)
+      setLastMonthSpend(lastSpend)
       setTopCategory(topCat)
       setTransactionCount(expCount)
       setMonthlyData(buildMonthlySpend(rows))
       setCategoryData(buildCategoryData(currentRows))
-      setCategoryTrend(buildCategoryTrend(rows))
       setRecentTx(rows.slice(0, 5))
       setLoading(false)
     }
@@ -236,22 +196,21 @@ export default function DashboardPage() {
             topCategory={topCategory}
             transactionCount={transactionCount}
             loading={loading}
-            currentMonthLabel={currentMonthLabel}
-            lastMonthLabel={lastMonthLabel}
           />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-            {/* Left column: spending chart + net accumulated */}
+            {/* Left column: spending chart */}
             <div className="lg:col-span-3 flex flex-col gap-4">
               <SpendingChart data={monthlyData} loading={loading} />
-              <CategoryTrendChart data={categoryTrend.data} categories={categoryTrend.categories} loading={loading} />
             </div>
-            {/* Right column: category donut + compact transactions */}
+            {/* Right column: category donut */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               <CategoryDonut data={categoryData} total={totalCategorySpend} loading={loading} monthLabel={currentMonthLabel} />
-              <RecentTransactions transactions={recentTx} loading={loading} />
             </div>
           </div>
+
+          {/* Full-width row, so each entry has room for description, category and amount */}
+          <RecentTransactions transactions={recentTx} loading={loading} />
         </main>
       </div>
 

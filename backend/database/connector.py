@@ -58,9 +58,15 @@ def parse_date(date_str: str, year: int, reference_end: Optional[date] = None) -
 # Amount / type helpers
 # ---------------------------------------------------------------------------
 
-def to_type(amount: float) -> str:
-    """Negative amounts are credits (payments/refunds); positive are debits (purchases)."""
-    return "credit" if amount < 0 else "debit"
+def to_outflow(amount: float, account_type: str) -> float:
+    """
+    Normalize a statement-relative amount so positive always means money left the account.
+
+    The two conventions are inverted: on a credit card a purchase raises the balance owed
+    (positive) and a refund lowers it (negative), while on checking/savings money going out
+    is negative and a deposit is positive.
+    """
+    return amount if account_type == "credit" else -amount
 
 
 # ---------------------------------------------------------------------------

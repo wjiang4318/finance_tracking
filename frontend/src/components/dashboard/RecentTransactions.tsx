@@ -1,7 +1,11 @@
 'use client'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { ArrowLeftRight } from 'lucide-react'
 import { CATEGORY_COLORS } from './CategoryDonut'
+
+// Categories excluded from spending totals, marked with a ↔ indicator on the row.
+const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
 
 interface Transaction {
   date: string
@@ -75,6 +79,7 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
           {transactions.map((tx, i) => {
             const color = CATEGORY_COLORS[tx.category] ?? '#6b7280'
             const isIncome = tx.category === 'Income'
+            const isExpense = !TRANSFERS.includes(tx.category) && tx.amount > 0
             return (
               <motion.div
                 key={i}
@@ -87,12 +92,23 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
                   {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
                 <span className="flex-1 text-sm text-gray-700 truncate">{tx.description}</span>
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full shrink-0"
-                  style={{ backgroundColor: `${color}18`, color }}
-                >
-                  {tx.category}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: `${color}18`, color }}
+                  >
+                    {tx.category}
+                  </span>
+                  {!isExpense && (
+                    <ArrowLeftRight
+                      size={11}
+                      className="text-gray-500 shrink-0"
+                      aria-label="Excluded from spending totals"
+                    >
+                      <title>Excluded from spending totals — transfer, payment, or income, not new spending</title>
+                    </ArrowLeftRight>
+                  )}
+                </div>
                 <span className={`text-sm font-medium w-20 text-right shrink-0 ${isIncome ? 'text-emerald-500' : 'text-gray-800'}`}>
                   {isIncome ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
                 </span>

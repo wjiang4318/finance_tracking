@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { API_URL } from '@/utils/api'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
+import { countsTowardSpend } from '@/utils/spend'
 import { Plus, Search, X, Trash2, FileX, ArrowLeftRight } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import PageBanner from '@/components/PageBanner'
@@ -19,9 +20,6 @@ const CATEGORIES = [
   'Income', 'Uncategorized',
 ]
 
-// Categories excluded from spending totals everywhere (dashboard + trends) — a transaction
-// only counts as "expense" when its category isn't one of these AND the amount is positive.
-const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
 
 type TxRow = {
   id: string
@@ -408,7 +406,7 @@ export default function TransactionsPage() {
                 {filtered.map((tx, i) => {
                   const color     = CATEGORY_COLORS[tx.category] ?? '#6b7280'
                   const isIncome  = tx.category === 'Income' || tx.amount < 0
-                  const isExpense = !TRANSFERS.includes(tx.category) && tx.amount > 0
+                  const isExpense = countsTowardSpend(tx)
                   return (
                     <motion.tr
                       key={tx.id ?? i}
@@ -433,7 +431,7 @@ export default function TransactionsPage() {
                           {!isExpense && (
                             <ArrowLeftRight
                               size={11}
-                              className="text-gray-300 shrink-0"
+                              className="text-gray-500 shrink-0"
                               aria-label="Excluded from spending totals"
                             >
                               <title>Excluded from spending totals — transfer, payment, or income, not new spending</title>
@@ -456,7 +454,7 @@ export default function TransactionsPage() {
                 {filtered.length !== allTx.length && ` (of ${allTx.length} total)`}
               </span>
               <span className="flex items-center gap-1">
-                <ArrowLeftRight size={11} className="text-gray-300" />
+                <ArrowLeftRight size={11} className="text-gray-500" />
                 excluded from spending totals
               </span>
             </div>

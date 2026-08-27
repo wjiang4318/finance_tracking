@@ -21,7 +21,7 @@ from database.connector import (
     statement_exists,
     create_statement,
     parse_date,
-    to_type,
+    to_outflow,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,13 +93,16 @@ def upload_transactions(
         amount_raw = float(row["amount1"])
         category = row.get("category")
 
+        # Normalize the statement-relative sign so `type` means the same thing for every row
+        outflow = to_outflow(amount_raw, account_type)
+
         rows.append({
             "statement_id": statement_id,
             "user_id": user_id,
             "date": trans_date.isoformat(),
             "description": str(row["description"]).strip(),
-            "amount": abs(amount_raw),
-            "type": to_type(amount_raw),
+            "amount": abs(outflow),
+            "type": "debit" if outflow > 0 else "credit",
             "category": category if pd.notna(category) and category != "" else None,
         })
 
