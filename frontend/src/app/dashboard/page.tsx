@@ -199,12 +199,13 @@ export default function DashboardPage() {
           />
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-            {/* Left column: spending chart */}
-            <div className="lg:col-span-3 flex flex-col gap-4">
+            {/* `grid` (not `flex flex-col`) so the single child stretches to fill the row's
+                full height, matching the taller sibling — a flex-column child only takes its
+                own content height, which is what left the donut card shorter. */}
+            <div className="lg:col-span-3 grid">
               <SpendingChart data={monthlyData} loading={loading} />
             </div>
-            {/* Right column: category donut */}
-            <div className="lg:col-span-2 flex flex-col gap-4">
+            <div className="lg:col-span-2 grid">
               <CategoryDonut data={categoryData} total={totalCategorySpend} loading={loading} monthLabel={currentMonthLabel} />
             </div>
           </div>
