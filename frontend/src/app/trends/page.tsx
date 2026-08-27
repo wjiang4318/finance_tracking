@@ -20,10 +20,9 @@ const QUARTERS: Record<string, number[]> = {
   Q4:  [9,10,11],
 }
 
-// All outflow categories in stack order (transfers/investments at bottom, spending on top)
-const OUTFLOW_CATEGORIES = [
-  'Investment',
-  'Internal Transfers',
+// Categories that count as real spend (excludes transfers) — same definition used
+// for "Total Spending" everywhere else in the app (dashboard, Transactions page).
+const SPEND_CATEGORIES = [
   'Food & Drink',
   'Groceries',
   'Shopping',
@@ -34,15 +33,26 @@ const OUTFLOW_CATEGORIES = [
   'Uncategorized',
 ]
 
+const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
+
 type TxRow = { date: string; amount: number; category: string }
 
 type MonthSummary = {
   month: string
   monthIndex: number
-  income: number
   expenses: number
-  net: number
   [cat: string]: string | number
+}
+
+// Total spend for a set of months in a given year — used to compute the same-months,
+// year-over-year comparison (independent of the currently-selected year's monthData).
+function spendForPeriod(txs: TxRow[], year: number, monthIndices: number[]): number {
+  return monthIndices.reduce((total, mi) => {
+    const key = `${year}-${String(mi + 1).padStart(2, '0')}`
+    return total + txs
+      .filter(tx => tx.date.startsWith(key) && !TRANSFERS.includes(tx.category) && tx.amount > 0)
+      .reduce((s, tx) => s + tx.amount, 0)
+  }, 0)
 }
 
 function fmt(n: number) {
@@ -84,15 +94,12 @@ export default function TrendsPage() {
       const key = `${year}-${String(mi + 1).padStart(2, '0')}`
       const txs = allTx.filter(tx => tx.date.startsWith(key))
 
-      const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
-      const income   = txs.filter(tx => tx.category === 'Income' || tx.amount < 0)
-                          .reduce((s, tx) => s + Math.abs(tx.amount), 0)
       const expenses = txs.filter(tx => !TRANSFERS.includes(tx.category) && tx.amount > 0)
                           .reduce((s, tx) => s + tx.amount, 0)
 
-      // Per-category outflow amounts (debits only)
+      // Per-category spend amounts (debits only)
       const cats: Record<string, number> = {}
-      for (const cat of OUTFLOW_CATEGORIES) {
+      for (const cat of SPEND_CATEGORIES) {
         cats[cat] = Math.round(
           txs.filter(tx => tx.category === cat && tx.amount > 0)
              .reduce((s, tx) => s + tx.amount, 0) * 100
@@ -102,27 +109,39 @@ export default function TrendsPage() {
       return {
         month:      MONTH_LABELS[mi],
         monthIndex: mi,
-        income:     Math.round(income   * 100) / 100,
         expenses:   Math.round(expenses * 100) / 100,
-        net:        Math.round((income - expenses) * 100) / 100,
         ...cats,
       }
     })
 
   // Only render bars for categories that have any activity in the period
-  const activeCats = OUTFLOW_CATEGORIES.filter(cat =>
+  const activeCats = SPEND_CATEGORIES.filter(cat =>
     monthData.some(m => (m[cat] as number) > 0)
   )
 
-  const totalIncome   = monthData.reduce((s, m) => s + m.income,   0)
   const totalExpenses = monthData.reduce((s, m) => s + m.expenses, 0)
-  const totalNet      = totalIncome - totalExpenses
+
+  // Top category for the selected period
+  const categoryTotals = SPEND_CATEGORIES.map(cat => ({
+    cat,
+    total: monthData.reduce((s, m) => s + ((m[cat] as number) ?? 0), 0),
+  })).sort((a, b) => b.total - a.total)
+  const topCategory = categoryTotals[0]?.total > 0 ? categoryTotals[0].cat : '—'
+
+  // Same months, one year earlier — for a year-over-year comparison that isn't skewed
+  // by comparing a partial current year against a full prior year.
+  const includedMonthIndices = monthData.map(m => m.monthIndex)
+  const prevYearExpenses = spendForPeriod(allTx, year - 1, includedMonthIndices)
+  const vsLastYearPercent = prevYearExpenses > 0
+    ? Math.round(((totalExpenses - prevYearExpenses) / prevYearExpenses) * 100)
+    : null
+  const isOverLastYear = (vsLastYearPercent ?? 0) > 0
 
   const availableYears = [...new Set(allTx.map(tx => new Date(tx.date).getFullYear()))]
   if (!availableYears.includes(now.getFullYear())) availableYears.push(now.getFullYear())
   availableYears.sort((a, b) => b - a)
 
-  const isEmpty = !loading && monthData.every(m => m.expenses === 0 && m.income === 0)
+  const isEmpty = !loading && monthData.every(m => m.expenses === 0)
 
   return (
     <div className="min-h-screen bg-[#f4f4fb]">
@@ -164,25 +183,29 @@ export default function TrendsPage() {
           {/* Summary totals */}
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Income</p>
-              <p className="text-2xl font-bold text-emerald-600">${fmt(totalIncome)}</p>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Spending</p>
               <p className="text-2xl font-bold text-gray-900">${fmt(totalExpenses)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Net</p>
-              <p className={`text-2xl font-bold ${totalNet >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                {totalNet >= 0 ? '+' : '–'}${fmt(Math.abs(totalNet))}
-              </p>
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Top Category</p>
+              <p className="text-2xl font-bold text-gray-900 truncate">{topCategory}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">vs Last Year</p>
+              {vsLastYearPercent === null ? (
+                <p className="text-2xl font-bold text-gray-300">—</p>
+              ) : (
+                <p className={`text-2xl font-bold ${isOverLastYear ? 'text-red-400' : 'text-emerald-500'}`}>
+                  {isOverLastYear ? '+' : ''}{vsLastYearPercent}%
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Income vs stacked outflows chart */}
+          {/* Spend by category, stacked */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Monthly</p>
-            <p className="text-sm font-semibold text-gray-900 mb-5">Income vs Where It Went</p>
+            <p className="text-sm font-semibold text-gray-900 mb-5">Where It Went</p>
 
             {loading ? (
               <div className="h-64 flex items-center justify-center">
@@ -221,19 +244,14 @@ export default function TrendsPage() {
                   />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 16 }} />
 
-                  {/* Income — left grouped bar. Only rendered when there's income to show —
-                      otherwise its empty slot still reserves space and pushes the spending
-                      bar off-center from the month tick. */}
-                  {totalIncome > 0 && (
-                    <Bar dataKey="income" name="Income" stackId="income" fill="#1e3a5f" radius={[4, 4, 0, 0]} maxBarSize={48} />
-                  )}
-
-                  {/* All outflows — stacked together as one grouped bar (right) */}
+                  {/* Spend categories stacked into a single bar per month — transfer
+                      categories (Income/Investment/Internal Transfers/Credit Card Payment)
+                      are excluded entirely, so this bar's height always matches Total Spending. */}
                   {activeCats.map((cat, i) => (
                     <Bar
                       key={cat}
                       dataKey={cat}
-                      stackId="outflow"
+                      stackId="spend"
                       name={cat}
                       fill={CATEGORY_COLORS[cat] ?? '#6b7280'}
                       radius={i === activeCats.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
@@ -258,23 +276,9 @@ export default function TrendsPage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {monthData.map(m => (
                   <div key={m.month} className="bg-white rounded-xl border border-gray-100 p-4">
-                    <p className="text-sm font-semibold text-gray-800 mb-3">{m.month} {year}</p>
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Income</span>
-                        <span className="text-emerald-600 font-medium">+${m.income.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-gray-400">Spending</span>
-                        <span className="text-gray-800 font-medium">–${m.expenses.toFixed(2)}</span>
-                      </div>
-                      <div className="border-t border-gray-100 pt-1.5 flex justify-between text-xs">
-                        <span className="text-gray-400">Net</span>
-                        <span className={`font-semibold ${m.net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {m.net >= 0 ? '+' : '–'}${Math.abs(m.net).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
+                    <p className="text-sm font-semibold text-gray-800 mb-2">{m.month} {year}</p>
+                    <p className="text-lg font-bold text-gray-900">${m.expenses.toFixed(2)}</p>
+                    <p className="text-xs text-gray-400">spent</p>
                   </div>
                 ))}
               </div>
