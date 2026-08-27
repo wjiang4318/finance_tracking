@@ -39,10 +39,9 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.4 }}
-        className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+        className="rounded-2xl border border-gray-100 bg-white p-6"
       >
-        <p className="text-xs text-gray-400 mb-1">Recent Transactions</p>
-        <p className="text-sm font-semibold text-gray-800 mb-4">Latest activity</p>
+        <p className="text-[15px] font-semibold text-gray-900 mb-4">Recent transactions</p>
         <div className="divide-y divide-gray-100">
           {[0,1,2,3,4].map(i => <SkeletonRow key={i} />)}
         </div>
@@ -55,16 +54,13 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.4 }}
-      className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+      className="rounded-2xl border border-gray-100 bg-white p-6"
     >
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <p className="text-xs text-gray-400 mb-1">Recent Transactions</p>
-          <p className="text-sm font-semibold text-gray-800">Latest activity</p>
-        </div>
+      <div className="flex items-baseline justify-between mb-4">
+        <p className="text-[15px] font-semibold text-gray-900">Recent transactions</p>
         <button
           onClick={() => router.push('/transactions')}
-          className="text-xs text-indigo-600 hover:underline shrink-0 mt-1"
+          className="text-xs font-medium text-indigo-600 hover:underline shrink-0"
         >
           View all →
         </button>
@@ -86,13 +82,44 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 + i * 0.04, duration: 0.3 }}
-                className="flex items-center gap-4 py-3"
+                className="flex flex-col gap-1.5 py-3 sm:flex-row sm:items-center sm:gap-4 sm:py-3"
               >
-                <span className="text-xs text-gray-400 w-20 shrink-0">
+                {/* Mobile: description + amount on one line, date + category on the next —
+                    a single fixed-width row has no room left for the description once a
+                    long category name (e.g. "Credit Card Payment") is in play. */}
+                <div className="flex items-center justify-between gap-3 sm:hidden">
+                  <span className="min-w-0 flex-1 truncate text-sm text-gray-700">{tx.description}</span>
+                  <span className={`shrink-0 text-sm font-medium tabular-nums ${isIncome ? 'text-emerald-500' : 'text-gray-800'}`}>
+                    {isIncome ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 sm:hidden">
+                  <span className="shrink-0 text-xs text-gray-400">
+                    {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                  <span
+                    className="truncate rounded-full px-2 py-0.5 text-xs"
+                    style={{ backgroundColor: `${color}18`, color }}
+                  >
+                    {tx.category}
+                  </span>
+                  {!isExpense && (
+                    <ArrowLeftRight
+                      size={11}
+                      className="shrink-0 text-gray-500"
+                      aria-label="Excluded from spending totals"
+                    >
+                      <title>Excluded from spending totals — transfer, payment, or income, not new spending</title>
+                    </ArrowLeftRight>
+                  )}
+                </div>
+
+                {/* sm and up: single row, fixed date/amount columns */}
+                <span className="hidden w-20 shrink-0 text-xs text-gray-400 sm:inline">
                   {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
-                <span className="flex-1 text-sm text-gray-700 truncate">{tx.description}</span>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <span className="hidden min-w-0 flex-1 truncate text-sm text-gray-700 sm:inline">{tx.description}</span>
+                <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
                   <span
                     className="text-xs px-2 py-0.5 rounded-full"
                     style={{ backgroundColor: `${color}18`, color }}
@@ -109,7 +136,7 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
                     </ArrowLeftRight>
                   )}
                 </div>
-                <span className={`text-sm font-medium w-20 text-right shrink-0 ${isIncome ? 'text-emerald-500' : 'text-gray-800'}`}>
+                <span className={`hidden w-20 shrink-0 text-right text-sm font-medium tabular-nums sm:inline ${isIncome ? 'text-emerald-500' : 'text-gray-800'}`}>
                   {isIncome ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
                 </span>
               </motion.div>

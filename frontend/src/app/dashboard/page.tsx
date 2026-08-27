@@ -169,7 +169,7 @@ export default function DashboardPage() {
 
       <PageBanner
         eyebrow="Personal"
-        title="Finance Tracker"
+        title="Expense Tracker"
         right={
           <>
             {uploadStatus === 'success' && (
@@ -189,7 +189,7 @@ export default function DashboardPage() {
       <div className="flex">
         <Sidebar onUpload={() => fileInputRef.current?.click()} />
 
-        <main className="flex-1 px-6 py-6 flex flex-col gap-6">
+        <main className="flex-1 min-w-0 px-6 pt-20 pb-8 lg:pt-8 flex flex-col gap-7">
           <StatCards
             currentMonthSpend={currentMonthSpend}
             lastMonthSpend={lastMonthSpend}
@@ -198,7 +198,7 @@ export default function DashboardPage() {
             loading={loading}
           />
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
             {/* Left column: spending chart */}
             <div className="lg:col-span-3 flex flex-col gap-4">
               <SpendingChart data={monthlyData} loading={loading} />

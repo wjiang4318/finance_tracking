@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, ArrowUpFromLine, List, TrendingUp, LogOut } from 'lucide-react'
+import { LayoutDashboard, ArrowUpFromLine, List, TrendingUp, LogOut, PieChart, Menu, X } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import { API_URL } from '@/utils/api'
 
@@ -25,6 +25,7 @@ export default function Sidebar({ onUpload }: SidebarProps) {
   const [uploading, setUploading] = useState(false)
   const [statusMsg, setStatusMsg] = useState('')
   const [statusType, setStatusType] = useState<'success' | 'error' | ''>('')
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -70,6 +71,7 @@ export default function Sidebar({ onUpload }: SidebarProps) {
   }
 
   function handleUploadClick() {
+    setMobileOpen(false)
     if (onUpload) {
       onUpload()
     } else {
@@ -77,18 +79,22 @@ export default function Sidebar({ onUpload }: SidebarProps) {
     }
   }
 
-  return (
-    <aside className="w-56 shrink-0 h-screen sticky top-0 flex flex-col bg-[#f4f4fb] border-r border-gray-100 select-none">
+  function handleNavigate(href: string) {
+    setMobileOpen(false)
+    router.push(href)
+  }
 
-      {/* Nav */}
-      <nav className="flex-1 px-2 pt-3 space-y-0.5">
+  // Shared between the desktop rail and the mobile drawer so both stay in sync
+  function NavList() {
+    return (
+      <nav className="flex-1 px-2 space-y-0.5">
         {NAV.map(({ label, href, icon: Icon }) => {
           const active = pathname === href
           return (
             <button
               key={href}
-              onClick={() => router.push(href)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left ${
+              onClick={() => handleNavigate(href)}
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors text-left ${
                 active
                   ? 'bg-white shadow-sm text-gray-900 font-medium'
                   : 'text-gray-700 hover:bg-white/70 hover:text-gray-900'
@@ -100,42 +106,114 @@ export default function Sidebar({ onUpload }: SidebarProps) {
           )
         })}
       </nav>
+    )
+  }
 
-      {/* Upload status (shown on non-dashboard pages) */}
-      {statusMsg && (
-        <div className={`mx-2 mb-1 px-3 py-2 rounded-lg text-xs ${
-          statusType === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
-        }`}>
-          {statusMsg}
+  function Footer() {
+    return (
+      <>
+        {statusMsg && (
+          <div className={`mx-2 mb-1 px-3 py-2 rounded-lg text-xs ${
+            statusType === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+          }`}>
+            {statusMsg}
+          </div>
+        )}
+
+        <div className="px-2 mb-2">
+          <button
+            onClick={handleUploadClick}
+            disabled={uploading}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-40"
+          >
+            <ArrowUpFromLine size={15} />
+            <span className="font-medium">{uploading ? 'Uploading…' : 'Upload statement'}</span>
+          </button>
         </div>
+
+        <div className="mx-3 border-t border-gray-100 mb-2" />
+
+        <div className="px-2 pb-4">
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-700 hover:bg-white/70 transition-colors"
+          >
+            <LogOut size={15} />
+            <span>Sign out</span>
+          </button>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {/* Desktop rail */}
+      <aside className="hidden lg:flex w-56 shrink-0 h-screen sticky top-0 flex-col bg-[#f4f4fb] border-r border-gray-100 select-none">
+        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600">
+            <PieChart size={15} strokeWidth={2} className="text-white" />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight text-gray-900">
+            Expense Tracker
+          </span>
+        </div>
+        <NavList />
+        <Footer />
+      </aside>
+
+      {/* Mobile top bar */}
+      <div className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-gray-100 bg-[#f4f4fb]/90 px-4 backdrop-blur-md lg:hidden">
+        <div className="flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600">
+            <PieChart size={15} strokeWidth={2} className="text-white" />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight text-gray-900">
+            Expense Tracker
+          </span>
+        </div>
+        <button
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-white/70"
+        >
+          <Menu size={18} />
+        </button>
+      </div>
+
+      {/* Mobile drawer */}
+      {mobileOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-gray-900/30 backdrop-blur-[2px]"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-[#f4f4fb] shadow-xl">
+            <div className="flex items-center justify-between px-4 pt-5 pb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600">
+                  <PieChart size={15} strokeWidth={2} className="text-white" />
+                </span>
+                <span className="text-[15px] font-semibold tracking-tight text-gray-900">
+                  Expense Tracker
+                </span>
+              </div>
+              <button
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close menu"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-white/70"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <NavList />
+            <Footer />
+          </aside>
+        </div>,
+        document.body
       )}
 
-      {/* Upload */}
-      <div className="px-2 mb-2">
-        <button
-          onClick={handleUploadClick}
-          disabled={uploading}
-          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-40"
-        >
-          <ArrowUpFromLine size={15} />
-          <span className="font-medium">{uploading ? 'Uploading…' : 'Upload statement'}</span>
-        </button>
-      </div>
-
-      <div className="mx-3 border-t border-gray-100 mb-2" />
-
-      {/* Sign out */}
-      <div className="px-2 pb-4">
-        <button
-          onClick={handleSignOut}
-          className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-700 hover:bg-white/70 transition-colors"
-        >
-          <LogOut size={15} />
-          <span>Sign out</span>
-        </button>
-      </div>
-
-      {/* Hidden file input for non-dashboard pages */}
+      {/* Hidden file input, shared by desktop and mobile upload buttons */}
       <input
         ref={fileInputRef}
         type="file"
@@ -154,6 +232,6 @@ export default function Sidebar({ onUpload }: SidebarProps) {
         </div>,
         document.body
       )}
-    </aside>
+    </>
   )
 }

@@ -36,10 +36,12 @@ export async function proxy(request: NextRequest) {
   // Ask Supabase: is there a logged-in user for this session?
   // user → the logged-in user object, or null if not logged in
 
-  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
-  // Check if the user is trying to visit the login page specifically
+  const { pathname } = request.nextUrl
 
-  if (!user && !isLoginPage) {
+  // Pages a signed-out visitor is allowed to see: the landing page and the sign-in page
+  const isPublicPage = pathname === '/' || pathname.startsWith('/login')
+
+  if (!user && !isPublicPage) {
     // Not logged in AND trying to access a protected page (dashboard, transactions, etc.)
     // → redirect them to /login
     const url = request.nextUrl.clone()
@@ -47,8 +49,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && isLoginPage) {
-    // Already logged in but visiting /login (no need to be there)
+  if (user && isPublicPage) {
+    // Already signed in, so the landing and sign-in pages have nothing to offer
     // → redirect them to /dashboard
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'

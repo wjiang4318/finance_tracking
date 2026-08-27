@@ -26,8 +26,8 @@ interface CategoryDonutProps {
 
 function SkeletonDonut() {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 animate-pulse shadow-sm flex flex-col">
-      <div className="h-3 w-36 rounded bg-gray-200 mb-6" />
+    <div className="flex flex-col rounded-2xl border border-gray-100 bg-white p-6 animate-pulse">
+      <div className="h-4 w-36 rounded bg-gray-100 mb-6" />
       <div className="flex-1 flex items-center justify-center">
         <div className="w-40 h-40 rounded-full bg-gray-100" />
       </div>
@@ -45,17 +45,19 @@ export default function CategoryDonut({ data, total, loading, monthLabel }: Cate
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.3 }}
-      className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col"
+      className="flex flex-col rounded-2xl border border-gray-100 bg-white p-6"
     >
-      <p className="text-xs text-gray-400 mb-1">Spending by Category</p>
-      <p className="text-sm font-semibold text-gray-800 mb-4">{monthLabel}</p>
+      <div className="flex items-baseline justify-between">
+        <p className="text-[15px] font-semibold text-gray-900">Spending by category</p>
+        <p className="text-xs text-gray-400">{monthLabel}</p>
+      </div>
 
       {isEmpty ? (
         <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center px-4">
           No spending in {monthLabel}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="mt-4 flex flex-col gap-4">
           <div className="relative">
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
@@ -71,8 +73,8 @@ export default function CategoryDonut({ data, total, loading, monthLabel }: Cate
                 >
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }}
-                  itemStyle={{ color: '#111827' }}
+                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 10, fontSize: 12 }}
+                  itemStyle={{ color: '#111827', fontVariantNumeric: 'tabular-nums' }}
                   formatter={(v: unknown) => [`$${Number(v).toFixed(2)}`, '']}
                   position={{ x: 8, y: 4 }}
                   allowEscapeViewBox={{ x: true, y: true }}
@@ -81,17 +83,18 @@ export default function CategoryDonut({ data, total, loading, monthLabel }: Cate
             </ResponsiveContainer>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center">
-                <p className="text-lg font-bold text-gray-900">${total >= 1000 ? `${(total/1000).toFixed(1)}k` : total.toFixed(2)}</p>
+                <p className="text-lg font-semibold tracking-tight tabular-nums text-gray-900">${total >= 1000 ? `${(total/1000).toFixed(1)}k` : total.toFixed(2)}</p>
                 <p className="text-xs text-gray-400">total</p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <div className="flex flex-col divide-y divide-gray-100">
             {data.slice(0, 8).map(entry => (
-              <div key={entry.name} className="flex items-center gap-1.5 min-w-0">
+              <div key={entry.name} className="flex items-center gap-2.5 py-1.5 min-w-0 text-xs">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[entry.name] ?? '#6b7280' }} />
-                <span className="text-xs text-gray-500 truncate">{entry.name}</span>
+                <span className="min-w-0 flex-1 truncate text-gray-500">{entry.name}</span>
+                <span className="tabular-nums text-gray-900">${entry.value.toFixed(2)}</span>
               </div>
             ))}
           </div>

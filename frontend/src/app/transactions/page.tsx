@@ -310,7 +310,7 @@ export default function TransactionsPage() {
   return (
     <div className="min-h-screen bg-[#f4f4fb]">
       <PageBanner
-        eyebrow="Finance Tracker"
+        eyebrow="Expense Tracker"
         title="Transactions"
         right={
           <div className="flex items-center gap-2">
@@ -331,7 +331,7 @@ export default function TransactionsPage() {
       />
       <div className="flex">
         <Sidebar onUpload={() => fileInputRef.current?.click()} />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto pt-14 lg:pt-0">
 
       {/* ── Filters ── */}
       <div className="px-6 pt-5 pb-4 flex flex-wrap items-center gap-3">
@@ -377,7 +377,7 @@ export default function TransactionsPage() {
             <p className="text-sm text-gray-400">Loading transactions…</p>
           </div>
         ) : allTx.length === 0 ? (
-          <div className="rounded-xl border border-gray-100 bg-white py-24 text-center">
+          <div className="rounded-2xl border border-gray-100 bg-white py-24 text-center">
             <p className="text-gray-500 text-sm mb-3">No transactions yet</p>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -387,11 +387,11 @@ export default function TransactionsPage() {
             </button>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-gray-100 bg-white py-24 text-center">
+          <div className="rounded-2xl border border-gray-100 bg-white py-24 text-center">
             <p className="text-gray-500 text-sm">No results for this filter</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+          <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50/60">

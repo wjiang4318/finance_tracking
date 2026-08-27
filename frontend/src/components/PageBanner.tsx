@@ -6,7 +6,7 @@ type PageBannerProps = {
   right?: React.ReactNode
 }
 
-export default function PageBanner({ eyebrow = 'Finance Tracker', title, right }: PageBannerProps) {
+export default function PageBanner({ eyebrow = 'Expense Tracker', title, right }: PageBannerProps) {
   return (
     <div className="relative h-52 w-full overflow-hidden bg-indigo-950">
       <img

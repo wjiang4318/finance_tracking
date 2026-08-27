@@ -162,7 +162,7 @@ export default function TrendsPage() {
   return (
     <div className="min-h-screen bg-[#f4f4fb]">
       <PageBanner
-        eyebrow="Finance Tracker"
+        eyebrow="Expense Tracker"
         title="Spending Trends"
         right={
           <select
@@ -176,7 +176,7 @@ export default function TrendsPage() {
       />
       <div className="flex">
         <Sidebar />
-        <main className="flex-1">
+        <main className="flex-1 min-w-0 pt-14 lg:pt-0">
           <div className="px-6 py-6 flex flex-col gap-6">
 
           {/* Quarter tabs */}
@@ -198,20 +198,20 @@ export default function TrendsPage() {
 
           {/* Summary totals */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="bg-white rounded-2xl border border-gray-100 p-6">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Total Spending</p>
-              <p className="text-2xl font-bold text-gray-900">${fmt(totalExpenses)}</p>
+              <p className="text-2xl font-semibold tracking-tight tabular-nums text-gray-900">${fmt(totalExpenses)}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="bg-white rounded-2xl border border-gray-100 p-6">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Top Category</p>
-              <p className="text-2xl font-bold text-gray-900 truncate">{topCategory}</p>
+              <p className="text-2xl font-semibold tracking-tight text-gray-900 truncate">{topCategory}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
+            <div className="bg-white rounded-2xl border border-gray-100 p-6">
               <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">vs Last Year</p>
               {vsLastYearPercent === null ? (
-                <p className="text-2xl font-bold text-gray-300">—</p>
+                <p className="text-2xl font-semibold tracking-tight text-gray-300">—</p>
               ) : (
-                <p className={`text-2xl font-bold ${isOverLastYear ? 'text-red-400' : 'text-emerald-500'}`}>
+                <p className={`text-2xl font-semibold tracking-tight tabular-nums ${isOverLastYear ? 'text-red-400' : 'text-emerald-500'}`}>
                   {isOverLastYear ? '+' : ''}{vsLastYearPercent}%
                 </p>
               )}
@@ -220,7 +220,7 @@ export default function TrendsPage() {
 
           {/* Left: spend trend over time. Right: this period's category breakdown. */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-2xl border border-gray-100 p-6">
             <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">Monthly</p>
             <p className="text-sm font-semibold text-gray-900 mb-5">Where It Went</p>
 
@@ -288,13 +288,13 @@ export default function TrendsPage() {
             {loading ? (
               <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${monthColsClass}`}>
                 {monthIndices.slice(0, 4).map(i => (
-                  <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse h-28" />
+                  <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 animate-pulse h-28" />
                 ))}
               </div>
             ) : (
               <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${monthColsClass}`}>
                 {monthData.map(m => (
-                  <div key={m.month} className="bg-white rounded-xl border border-gray-100 p-4">
+                  <div key={m.month} className="bg-white rounded-2xl border border-gray-100 p-5">
                     <p className="text-sm font-semibold text-gray-800 mb-2">{m.month} {year}</p>
                     <p className="text-lg font-bold text-gray-900">${m.expenses.toFixed(2)}</p>
                     <p className="text-xs text-gray-400">spent</p>

@@ -24,6 +24,58 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Browser-owned surfaces, themed from the indigo accent instead of the UA defaults */
+::selection {
+  background: #ddd9fb;
+  color: #1e1b4b;
+}
+
+:root {
+  caret-color: #4f46e5;
+  accent-color: #4f46e5;
+  scrollbar-color: #c9c7dd var(--background);
+}
+
+:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Text fields draw their own focus ring, so the global outline would double up */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+button:focus-visible {
+  outline-offset: 1px;
+}
+
+a {
+  text-underline-offset: 3px;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c9c7dd;
+  border: 3px solid var(--background);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a9a6c6;
+}
+
 /* react-day-picker — always light, regardless of dark mode */
 .rdp-root {
   color: #374151 !important;

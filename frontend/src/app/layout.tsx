@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finance Tracker",
-  description: "Personal finance tracker",
+  title: "Expense Tracker",
+  description:
+    "Upload a bank or credit card statement PDF and see where your money went, sorted by category.",
 };
 
 export default function RootLayout({
