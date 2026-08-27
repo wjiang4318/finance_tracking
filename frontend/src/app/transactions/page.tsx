@@ -417,7 +417,7 @@ export default function TransactionsPage() {
                       className="hover:bg-indigo-50/40 cursor-pointer transition-colors"
                     >
                       <td className="px-5 py-3 text-gray-500 whitespace-nowrap text-xs">
-                        {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </td>
                       <td className="px-5 py-3 text-gray-800 max-w-xs truncate font-medium">{tx.description}</td>
                       <td className="px-5 py-3">
@@ -535,7 +535,7 @@ export default function TransactionsPage() {
                     <div className="flex-1 bg-gray-50 rounded-lg px-3 py-2">
                       <p className="text-xs text-gray-400">Date</p>
                       <p className="text-sm text-gray-700 mt-0.5">
-                        {new Date(editTx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(editTx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     </div>
                     <div className="flex-1">
@@ -645,9 +645,9 @@ export default function TransactionsPage() {
                       <p className="text-xs text-gray-400 mt-0.5">
                         {s.account_name}
                         {s.period_start && s.period_end && (
-                          <> · {new Date(s.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          <> · {new Date(s.period_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             {' – '}
-                            {new Date(s.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</>
+                            {new Date(s.period_end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</>
                         )}
                         {' · '}{s.txCount} transaction{s.txCount !== 1 ? 's' : ''}
                       </p>

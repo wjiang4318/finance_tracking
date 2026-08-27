@@ -95,7 +95,7 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
                 </div>
                 <div className="flex items-center gap-2 sm:hidden">
                   <span className="shrink-0 text-xs text-gray-400">
-                    {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </span>
                   <span
                     className="truncate rounded-full px-2 py-0.5 text-xs"
@@ -116,7 +116,7 @@ export default function RecentTransactions({ transactions, loading }: RecentTran
 
                 {/* sm and up: single row, fixed date/amount columns */}
                 <span className="hidden w-20 shrink-0 text-xs text-gray-400 sm:inline">
-                  {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {new Date(tx.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
                 <span className="hidden min-w-0 flex-1 truncate text-sm text-gray-700 sm:inline">{tx.description}</span>
                 <div className="hidden shrink-0 items-center gap-1.5 sm:flex">

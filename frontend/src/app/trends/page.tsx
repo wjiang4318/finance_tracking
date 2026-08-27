@@ -151,7 +151,7 @@ export default function TrendsPage() {
     : null
   const isOverLastYear = (vsLastYearPercent ?? 0) > 0
 
-  const availableYears = [...new Set(allTx.map(tx => new Date(tx.date).getFullYear()))]
+  const availableYears = [...new Set(allTx.map(tx => new Date(tx.date + 'T00:00:00').getFullYear()))]
   if (!availableYears.includes(now.getFullYear())) availableYears.push(now.getFullYear())
   availableYears.sort((a, b) => b - a)
 
