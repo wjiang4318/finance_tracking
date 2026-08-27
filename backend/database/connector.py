@@ -178,3 +178,26 @@ def upsert_user_category_override(user_id: str, cleaned_description: str, catego
         "cleaned_description": cleaned_description,
         "category": category,
     }).execute()
+
+
+# ---------------------------------------------------------------------------
+# Cross-account transfer detection (credit card payments made from another account)
+# ---------------------------------------------------------------------------
+
+def get_user_credit_card_last_fours(user_id: str) -> list[str]:
+    """Return last_four digits for all of a user's credit card accounts.
+
+    Used to catch outgoing card payments on a checking/savings statement whose wording
+    doesn't match any generic "payment"/"autopay" pattern — e.g. "Online Transfer to
+    Card 1333" — by recognizing the destination card's own last-4 digits instead.
+    """
+    res = (
+        get_client().table("accounts")
+        .select("last_four")
+        .eq("user_id", user_id)
+        .eq("account_type", "credit")
+        .execute()
+    )
+    return [row["last_four"] for row in res.data if row.get("last_four")]
+
+

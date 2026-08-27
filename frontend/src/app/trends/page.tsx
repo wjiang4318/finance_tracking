@@ -221,8 +221,12 @@ export default function TrendsPage() {
                   />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 16 }} />
 
-                  {/* Income — left grouped bar */}
-                  <Bar dataKey="income" name="Income" stackId="income" fill="#1e3a5f" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  {/* Income — left grouped bar. Only rendered when there's income to show —
+                      otherwise its empty slot still reserves space and pushes the spending
+                      bar off-center from the month tick. */}
+                  {totalIncome > 0 && (
+                    <Bar dataKey="income" name="Income" stackId="income" fill="#1e3a5f" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  )}
 
                   {/* All outflows — stacked together as one grouped bar (right) */}
                   {activeCats.map((cat, i) => (

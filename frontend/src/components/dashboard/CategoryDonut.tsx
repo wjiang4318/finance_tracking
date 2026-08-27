@@ -74,6 +74,8 @@ export default function CategoryDonut({ data, total, loading, monthLabel }: Cate
                   contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }}
                   itemStyle={{ color: '#111827' }}
                   formatter={(v: unknown) => [`$${Number(v).toFixed(2)}`, '']}
+                  position={{ x: 8, y: 4 }}
+                  allowEscapeViewBox={{ x: true, y: true }}
                 />
               </PieChart>
             </ResponsiveContainer>

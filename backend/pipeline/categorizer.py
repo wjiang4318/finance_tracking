@@ -19,6 +19,7 @@ from database.connector import (
     get_cached_categories_bulk,
     cache_categories_bulk,
     get_user_category_overrides_bulk,
+    get_user_credit_card_last_fours,
 )
 
 load_dotenv()
@@ -137,6 +138,14 @@ def _apply_local_rules(desc: str) -> str | None:
     return None
 
 
+def _build_last_four_pattern(last_fours: list[str]) -> re.Pattern | None:
+    """Build a regex matching any of the user's own credit card last-4-digit numbers."""
+    unique = sorted(set(lf for lf in last_fours if lf))
+    if not unique:
+        return None
+    return re.compile(r'\b(?:' + '|'.join(re.escape(lf) for lf in unique) + r')\b')
+
+
 _anthropic_client: anthropic.Anthropic | None = None
 
 def _get_client() -> anthropic.Anthropic:
@@ -201,6 +210,8 @@ def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.Dat
     """
     Add a 'category' column to a transactions DataFrame.
 
+    0. Cross-reference the user's own credit card last-4s (catches CC payments made from
+       a checking/savings statement whose wording doesn't match any generic pattern).
     1. Apply deterministic local rules (CC payments, etc.) — no API needed.
     2. User-specific overrides from user_category_overrides table (1 query, if user_id given).
     3. Bulk shared cache lookup for remaining descriptions (1 Supabase query).
@@ -212,9 +223,23 @@ def categorize_dataframe(df: pd.DataFrame, user_id: str | None = None) -> pd.Dat
     descriptions = df["description"].tolist()
     cleaned = [_clean_description(d) for d in descriptions]
 
-    # --- Step 1: deterministic local rules (no cache/API needed) ---
     pre_assigned: dict[int, str] = {}
+
+    # --- Step 0: last-4 cross-reference, checked against the RAW description — cleaning
+    # strips trailing digit groups (_TRAILING_NUM_RE), which would eat the very last-4
+    # digits we're trying to match on ("...Transfer to Card 1333" -> "...Transfer to Card").
+    if user_id:
+        last_fours = get_user_credit_card_last_fours(user_id)
+        last_four_pattern = _build_last_four_pattern(last_fours)
+        if last_four_pattern:
+            for i, raw_desc in enumerate(descriptions):
+                if last_four_pattern.search(str(raw_desc)):
+                    pre_assigned[i] = "Credit Card Payment"
+
+    # --- Step 1: deterministic local rules (no cache/API needed) ---
     for i, cleaned_desc in enumerate(cleaned):
+        if i in pre_assigned:
+            continue
         matched_category = _apply_local_rules(cleaned_desc)
         if matched_category is not None:
             pre_assigned[i] = matched_category

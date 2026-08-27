@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { API_URL } from '@/utils/api'
 import { CATEGORY_COLORS } from '@/components/dashboard/CategoryDonut'
-import { Plus, Search, X, Trash2, FileX } from 'lucide-react'
+import { Plus, Search, X, Trash2, FileX, ArrowLeftRight } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import PageBanner from '@/components/PageBanner'
 import { motion } from 'framer-motion'
@@ -18,6 +18,10 @@ const CATEGORIES = [
   'Investment', 'Internal Transfers', 'Credit Card Payment',
   'Income', 'Uncategorized',
 ]
+
+// Categories excluded from spending totals everywhere (dashboard + trends) — a transaction
+// only counts as "expense" when its category isn't one of these AND the amount is positive.
+const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
 
 type TxRow = {
   id: string
@@ -402,8 +406,9 @@ export default function TransactionsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((tx, i) => {
-                  const color    = CATEGORY_COLORS[tx.category] ?? '#6b7280'
-                  const isIncome = tx.category === 'Income' || tx.amount < 0
+                  const color     = CATEGORY_COLORS[tx.category] ?? '#6b7280'
+                  const isIncome  = tx.category === 'Income' || tx.amount < 0
+                  const isExpense = !TRANSFERS.includes(tx.category) && tx.amount > 0
                   return (
                     <motion.tr
                       key={tx.id ?? i}
@@ -418,12 +423,23 @@ export default function TransactionsPage() {
                       </td>
                       <td className="px-5 py-3 text-gray-800 max-w-xs truncate font-medium">{tx.description}</td>
                       <td className="px-5 py-3">
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ backgroundColor: `${color}20`, color }}
-                        >
-                          {tx.category}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full font-medium"
+                            style={{ backgroundColor: `${color}20`, color }}
+                          >
+                            {tx.category}
+                          </span>
+                          {!isExpense && (
+                            <ArrowLeftRight
+                              size={11}
+                              className="text-gray-300 shrink-0"
+                              aria-label="Excluded from spending totals"
+                            >
+                              <title>Excluded from spending totals — transfer, payment, or income, not new spending</title>
+                            </ArrowLeftRight>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-gray-500 text-xs">{tx.account_name}</td>
                       <td className={`px-5 py-3 text-right font-semibold whitespace-nowrap ${isIncome ? 'text-emerald-600' : 'text-gray-800'}`}>
@@ -434,9 +450,15 @@ export default function TransactionsPage() {
                 })}
               </tbody>
             </table>
-            <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
-              {filtered.length} transaction{filtered.length !== 1 ? 's' : ''}
-              {filtered.length !== allTx.length && ` (of ${allTx.length} total)`}
+            <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
+              <span>
+                {filtered.length} transaction{filtered.length !== 1 ? 's' : ''}
+                {filtered.length !== allTx.length && ` (of ${allTx.length} total)`}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowLeftRight size={11} className="text-gray-300" />
+                excluded from spending totals
+              </span>
             </div>
           </div>
         )}

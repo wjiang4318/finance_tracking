@@ -9,7 +9,7 @@ import StatCards from '@/components/dashboard/StatCards'
 import SpendingChart from '@/components/dashboard/SpendingChart'
 import CategoryDonut from '@/components/dashboard/CategoryDonut'
 import RecentTransactions from '@/components/dashboard/RecentTransactions'
-import NetAccumulatedChart from '@/components/dashboard/NetAccumulatedChart'
+import CategoryTrendChart from '@/components/dashboard/CategoryTrendChart'
 import PageBanner from '@/components/PageBanner'
 
 type UploadStatus = 'idle' | 'uploading' | 'success' | 'duplicate' | 'error'
@@ -39,23 +39,34 @@ function buildMonthlySpend(rows: TxRow[]): { month: string; spend: number }[] {
   return result
 }
 
-function buildNetAccumulated(rows: TxRow[]): { month: string; cumulative: number }[] {
+// Categories that can appear as real spend (mirrors OUTFLOW_CATEGORIES on the Trends page,
+// minus Investment/Internal Transfers/Credit Card Payment — those are transfers, not spend).
+const SPEND_CATEGORIES = [
+  'Food & Drink', 'Groceries', 'Shopping', 'Travel', 'Bills & Utilities',
+  'Entertainment', 'Health and Wellness', 'Uncategorized',
+]
+
+function buildCategoryTrend(rows: TxRow[]): { data: { month: string; [cat: string]: number | string }[]; categories: string[] } {
   const now = new Date()
   const TRANSFERS = ['Income', 'Investment', 'Internal Transfers', 'Credit Card Payment']
-  let running = 0
-  const result = []
+  const data: { month: string; [cat: string]: number | string }[] = []
+
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const monthRows = rows.filter(tx => tx.date.startsWith(key))
-    const income   = monthRows.filter(tx => tx.category === 'Income' || tx.amount < 0)
-                              .reduce((s, tx) => s + Math.abs(tx.amount), 0)
-    const spending = monthRows.filter(tx => !TRANSFERS.includes(tx.category) && tx.amount > 0)
-                              .reduce((s, tx) => s + tx.amount, 0)
-    running += income - spending
-    result.push({ month: MONTH_LABELS[d.getMonth()], cumulative: Math.round(running * 100) / 100 })
+    const monthRows = rows.filter(tx => tx.date.startsWith(key) && !TRANSFERS.includes(tx.category) && tx.amount > 0)
+
+    const row: { month: string; [cat: string]: number | string } = { month: MONTH_LABELS[d.getMonth()] }
+    for (const cat of SPEND_CATEGORIES) {
+      const total = monthRows.filter(tx => tx.category === cat).reduce((s, tx) => s + tx.amount, 0)
+      row[cat] = Math.round(total * 100) / 100
+    }
+    data.push(row)
   }
-  return result
+
+  // Only chart categories that actually had spend somewhere in the window
+  const categories = SPEND_CATEGORIES.filter(cat => data.some(row => (row[cat] as number) > 0))
+  return { data, categories }
 }
 
 function buildCategoryData(rows: TxRow[]): { name: string; value: number }[] {
@@ -85,7 +96,7 @@ export default function DashboardPage() {
   const [transactionCount, setTransactionCount]     = useState(0)
   const [monthlyData, setMonthlyData]               = useState<{ month: string; spend: number }[]>([])
   const [categoryData, setCategoryData]             = useState<{ name: string; value: number }[]>([])
-  const [netAccumulatedData, setNetAccumulatedData] = useState<{ month: string; cumulative: number }[]>([])
+  const [categoryTrend, setCategoryTrend]           = useState<{ data: { month: string; [cat: string]: number | string }[]; categories: string[] }>({ data: [], categories: [] })
   const [recentTx, setRecentTx]                     = useState<TxRow[]>([])
   const [currentMonthLabel, setCurrentMonthLabel]   = useState('')
   const [lastMonthLabel, setLastMonthLabel]         = useState('')
@@ -148,7 +159,7 @@ export default function DashboardPage() {
       setTransactionCount(expCount)
       setMonthlyData(buildMonthlySpend(rows))
       setCategoryData(buildCategoryData(currentRows))
-      setNetAccumulatedData(buildNetAccumulated(rows))
+      setCategoryTrend(buildCategoryTrend(rows))
       setRecentTx(rows.slice(0, 5))
       setLoading(false)
     }
@@ -233,7 +244,7 @@ export default function DashboardPage() {
             {/* Left column: spending chart + net accumulated */}
             <div className="lg:col-span-3 flex flex-col gap-4">
               <SpendingChart data={monthlyData} loading={loading} />
-              <NetAccumulatedChart data={netAccumulatedData} loading={loading} />
+              <CategoryTrendChart data={categoryTrend.data} categories={categoryTrend.categories} loading={loading} />
             </div>
             {/* Right column: category donut + compact transactions */}
             <div className="lg:col-span-2 flex flex-col gap-4">

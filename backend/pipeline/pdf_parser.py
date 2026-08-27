@@ -266,7 +266,9 @@ _NEGATIVE_SECTION_RE = re.compile(
 )
 
 # Applied globally to every parsed row — these phrases never appear in real merchant names.
-# Filters CC payment confirmations regardless of which PDF section they came from.
+# Filters CC payment confirmations regardless of which PDF section they came from. (A checking/
+# savings statement's outgoing payment to a card may use different wording than this and slip
+# through uncaught — see categorizer.py's last-4 cross-reference for the complementary catch.)
 _CC_PAYMENT_FILTER = re.compile(
     r'payment\s+thank\s+you'    # Chase:        "Payment Thank You-Mobile"
     r'|electronic\s+payment'    # BofA:         "BA ELECTRONIC PAYMENT"

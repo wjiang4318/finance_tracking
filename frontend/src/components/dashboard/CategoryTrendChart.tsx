@@ -1,9 +1,13 @@
 'use client'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { motion } from 'framer-motion'
+import { CATEGORY_COLORS } from './CategoryDonut'
 
-interface NetAccumulatedChartProps {
-  data: { month: string; cumulative: number }[]
+type MonthCatRow = { month: string; [category: string]: number | string }
+
+interface CategoryTrendChartProps {
+  data: MonthCatRow[]
+  categories: string[]
   loading: boolean
 }
 
@@ -16,10 +20,10 @@ function SkeletonChart() {
   )
 }
 
-export default function NetAccumulatedChart({ data, loading }: NetAccumulatedChartProps) {
+export default function CategoryTrendChart({ data, categories, loading }: CategoryTrendChartProps) {
   if (loading) return <SkeletonChart />
 
-  const isEmpty = data.every(d => d.cumulative === 0)
+  const isEmpty = categories.length === 0
 
   return (
     <motion.div
@@ -28,22 +32,16 @@ export default function NetAccumulatedChart({ data, loading }: NetAccumulatedCha
       transition={{ duration: 0.4, delay: 0.35 }}
       className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
     >
-      <p className="text-xs text-gray-400 mb-1">Net Accumulated</p>
-      <p className="text-sm font-semibold text-gray-800 mb-4">Income minus spending</p>
+      <p className="text-xs text-gray-400 mb-1">Category Trend</p>
+      <p className="text-sm font-semibold text-gray-800 mb-4">Spending by category — last 6 months</p>
 
       {isEmpty ? (
         <div className="h-52 flex items-center justify-center text-sm text-gray-400">
-          Upload a statement to see your net trend
+          Upload a statement to see category trends
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={208}>
           <AreaChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="netGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#10b981" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-              </linearGradient>
-            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
             <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis
@@ -54,19 +52,22 @@ export default function NetAccumulatedChart({ data, loading }: NetAccumulatedCha
             />
             <Tooltip
               contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12 }}
-              labelStyle={{ color: '#6b7280' }}
-              itemStyle={{ color: '#10b981' }}
-              formatter={(v) => [`$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Accumulated']}
+              formatter={(v: unknown, name) => [`$${Number(v).toFixed(2)}`, name as string]}
             />
-            <Area
-              type="monotone"
-              dataKey="cumulative"
-              stroke="#10b981"
-              strokeWidth={2}
-              fill="url(#netGradient)"
-              dot={{ r: 3, fill: '#10b981', strokeWidth: 0 }}
-              activeDot={{ r: 5, fill: '#10b981' }}
-            />
+            <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+            {categories.map(cat => (
+              <Area
+                key={cat}
+                type="monotone"
+                dataKey={cat}
+                name={cat}
+                stackId="spend"
+                stroke={CATEGORY_COLORS[cat] ?? '#6b7280'}
+                fill={CATEGORY_COLORS[cat] ?? '#6b7280'}
+                fillOpacity={0.55}
+                strokeWidth={1.5}
+              />
+            ))}
           </AreaChart>
         </ResponsiveContainer>
       )}
